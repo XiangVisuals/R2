@@ -3,6 +3,12 @@
   "main": "worker.js",
   "compatibility_date": "2024-09-23",
   "keep_vars": true,
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "images"
+    }
+  ],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
