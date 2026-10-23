@@ -1,12 +1,11 @@
 /**
- * XIANGVISUALS R2 VAULT — API Endpoint
- * Route: /api/images
+ * XIANG SPACE — Cloudflare Pages Function (/api/images)
  *
  * Methods:
- * - GET: Publicly list images in the R2 gallery (or verify admin auth if ?action=verify)
- * - POST: Upload a new image with EXIF & category metadata (Requires Admin Auth)
- * - PATCH: Update image metadata / category / title (Requires Admin Auth)
- * - DELETE: Delete single or multiple images from R2 (Requires Admin Auth)
+ * - GET: List images in R2 (or ?action=verify to verify admin password)
+ * - POST: Upload single or multiple images with optional client-generated thumbnail
+ * - PATCH: Batch or single update of folder (category) & title metadata
+ * - DELETE: Batch or single delete of images (plus their thumbnails & edge cache)
  */
 
 const CORS_HEADERS = {
@@ -35,11 +34,10 @@ function getTokenFromRequest(request) {
 
 function verifyAdmin(request, env) {
   const configuredPassword = env.ADMIN_PASSWORD;
-  // If ADMIN_PASSWORD is not set in environment, notify clearly
   if (!configuredPassword) {
     return {
       authorized: false,
-      reason: "服务器端尚未配置 ADMIN_PASSWORD 环境变量，请在 Cloudflare Pages 设置中添加。",
+      reason: "服务器端尚未配置 ADMIN_PASSWORD 环境变量，请在 Cloudflare Pages -> Settings -> Environment variables 中设置。",
       misconfigured: true,
     };
   }
@@ -47,7 +45,7 @@ function verifyAdmin(request, env) {
   if (!token || token !== configuredPassword) {
     return {
       authorized: false,
-      reason: "管理员密钥无效或未登录 (UNAUTHORIZED)",
+      reason: "访问密钥不正确 (INVALID PASSWORD)",
       misconfigured: false,
     };
   }
@@ -79,15 +77,20 @@ function formatR2Object(obj, request, env) {
     }
   }
 
+  const fullUrl = buildPublicUrl(obj.key, request, env);
+  const thumbUrl = meta.thumbKey ? buildPublicUrl(meta.thumbKey, request, env) : fullUrl;
+
   return {
     key: obj.key,
-    url: buildPublicUrl(obj.key, request, env),
+    url: fullUrl,
+    thumbUrl,
+    thumbKey: meta.thumbKey || "",
     size: obj.size,
     uploaded: obj.uploaded ? new Date(obj.uploaded).toISOString() : new Date().toISOString(),
     etag: obj.httpEtag,
     folder: meta.folder || (obj.key.includes("/") ? obj.key.split("/")[0] : "default"),
     originalName: meta.originalName || obj.key.split("/").pop(),
-    title: meta.title || "",
+    title: meta.title || meta.originalName || obj.key.split("/").pop(),
     width: meta.width ? Number(meta.width) : 0,
     height: meta.height ? Number(meta.height) : 0,
     mime: meta.mime || (obj.httpMetadata && obj.httpMetadata.contentType) || "image/jpeg",
@@ -99,14 +102,6 @@ export async function onRequestOptions() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
-/**
- * GET /api/images
- * Query params:
- * - action=verify : verifies admin token and returns system status
- * - prefix=       : optional folder prefix filter
- * - cursor=       : pagination cursor
- * - limit=        : max items (default 500)
- */
 export async function onRequestGet(context) {
   const { request, env } = context;
   const url = new URL(request.url);
@@ -122,7 +117,7 @@ export async function onRequestGet(context) {
       r2Bound: hasR2,
       passwordConfigured: hasPassword,
       publicDomain: env.PUBLIC_R2_DOMAIN || new URL(request.url).origin + "/raw",
-      message: auth.authorized ? "ADMIN VERIFIED" : auth.reason,
+      message: auth.authorized ? "VERIFIED" : auth.reason,
     }, auth.authorized ? 200 : 401);
   }
 
@@ -133,14 +128,27 @@ export async function onRequestGet(context) {
       passwordConfigured: hasPassword,
       items: [],
       folders: [],
-      message: "未检测到 R2 存储桶绑定 (BUCKET)。当前处于本地演示预览模式。",
+      message: "未检测到 R2 存储桶绑定 (BUCKET)。",
     }, 200);
+  }
+
+  const auth = verifyAdmin(request, env);
+  if (hasPassword && !auth.authorized) {
+    return jsonResponse({
+      ok: false,
+      r2Bound: true,
+      passwordConfigured: true,
+      isAdmin: false,
+      locked: true,
+      items: [],
+      message: auth.reason,
+    }, 401);
   }
 
   try {
     const prefix = url.searchParams.get("prefix") || undefined;
     const cursor = url.searchParams.get("cursor") || undefined;
-    const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get("limit")) || 600));
+    const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get("limit")) || 800));
 
     const listed = await env.BUCKET.list({
       prefix,
@@ -150,17 +158,14 @@ export async function onRequestGet(context) {
     });
 
     const items = (listed.objects || [])
-      .filter((obj) => !obj.key.endsWith("/.keep") && !obj.key.startsWith(".sys/"))
+      .filter((obj) => !obj.key.endsWith("/.keep") && !obj.key.startsWith(".sys/") && !obj.key.startsWith(".thumbs/"))
       .map((obj) => formatR2Object(obj, request, env))
       .sort((a, b) => new Date(b.uploaded).getTime() - new Date(a.uploaded).getTime());
 
-    // Collect distinct folders
     const folderSet = new Set(["default"]);
     items.forEach((item) => {
       if (item.folder) folderSet.add(item.folder);
     });
-
-    const auth = verifyAdmin(request, env);
 
     return jsonResponse({
       ok: true,
@@ -182,17 +187,6 @@ export async function onRequestGet(context) {
   }
 }
 
-/**
- * POST /api/images
- * FormData fields:
- * - file: File binary
- * - folder: category/folder slug (e.g. "2026", "street", "portrait", "blog")
- * - customName: optional custom filename
- * - title: optional artwork title
- * - width: image pixel width
- * - height: image pixel height
- * - exif: JSON string of EXIF telemetry
- */
 export async function onRequestPost(context) {
   const { request, env } = context;
 
@@ -204,13 +198,14 @@ export async function onRequestPost(context) {
   if (!env.BUCKET) {
     return jsonResponse({
       ok: false,
-      error: "R2 存储桶 (BUCKET) 未绑定，请在 Cloudflare Pages -> Settings -> Functions -> R2 bucket bindings 中绑定 BUCKET。",
+      error: "R2 存储桶 (BUCKET) 未绑定，请在 Cloudflare Pages -> Settings -> Functions -> R2 bucket bindings 中添加变量名 BUCKET。",
     }, 503);
   }
 
   try {
     const formData = await request.formData();
     const file = formData.get("file");
+    const thumbFile = formData.get("thumb");
 
     if (!file || typeof file === "string") {
       return jsonResponse({ ok: false, error: "未收到有效的文件数据 (Missing file)" }, 400);
@@ -235,7 +230,6 @@ export async function onRequestPost(context) {
       .replace(/\.[^/.]+$/, "")
       .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, "-");
 
-    // Generate clean, collision-free key: <folder>/<YYYYMMDD>-<shortHash>-<name>.<ext>
     const now = new Date();
     const datePrefix = [
       now.getFullYear(),
@@ -249,10 +243,23 @@ export async function onRequestPost(context) {
       : `${datePrefix}-${randSuffix}`;
 
     const key = `${rawFolder}/${baseName}.${ext}`;
+    let thumbKey = "";
+
+    // If client provided a lightweight WebP thumbnail, store it under .thumbs/ for instant loading
+    if (thumbFile && typeof thumbFile !== "string") {
+      thumbKey = `.thumbs/${rawFolder}/${baseName}.webp`;
+      const thumbBuf = await thumbFile.arrayBuffer();
+      await env.BUCKET.put(thumbKey, thumbBuf, {
+        httpMetadata: {
+          contentType: "image/webp",
+          cacheControl: "public, max-age=31536000, immutable",
+        },
+      });
+    }
 
     const width = (formData.get("width") || "0").toString();
     const height = (formData.get("height") || "0").toString();
-    const title = (formData.get("title") || "").toString().slice(0, 120);
+    const title = (formData.get("title") || originalName.replace(/\.[^/.]+$/, "")).toString().slice(0, 120);
     const exifRaw = (formData.get("exif") || "{}").toString().slice(0, 1500);
 
     const customMetadata = {
@@ -263,6 +270,7 @@ export async function onRequestPost(context) {
       height,
       mime: mimeType,
       exif: exifRaw,
+      thumbKey,
       uploadedAt: now.toISOString(),
     };
 
@@ -300,8 +308,7 @@ export async function onRequestPost(context) {
 
 /**
  * PATCH /api/images
- * Body JSON: { key, title, folder, exif }
- * Updates metadata on an existing R2 object without re-uploading from client
+ * Supports single { key, title, folder } OR batch { keys: [...], folder }
  */
 export async function onRequestPatch(context) {
   const { request, env } = context;
@@ -317,50 +324,52 @@ export async function onRequestPatch(context) {
 
   try {
     const body = await request.json();
-    const { key, title, folder } = body;
-    if (!key) {
-      return jsonResponse({ ok: false, error: "Missing key" }, 400);
+    const keys = Array.isArray(body.keys) ? body.keys : (body.key ? [body.key] : []);
+    const { title, folder } = body;
+
+    if (keys.length === 0) {
+      return jsonResponse({ ok: false, error: "Missing key(s)" }, 400);
     }
 
-    const existing = await env.BUCKET.get(key);
-    if (!existing) {
-      return jsonResponse({ ok: false, error: "Object not found" }, 404);
-    }
+    const updatedItems = [];
 
-    const updatedMeta = {
-      ...(existing.customMetadata || {}),
-    };
-    if (typeof title === "string") updatedMeta.title = title.slice(0, 120);
-    if (typeof folder === "string" && folder.trim()) updatedMeta.folder = folder.trim();
+    for (const k of keys) {
+      const existing = await env.BUCKET.get(k);
+      if (!existing) continue;
 
-    await env.BUCKET.put(key, existing.body, {
-      httpMetadata: existing.httpMetadata,
-      customMetadata: updatedMeta,
-    });
+      const updatedMeta = {
+        ...(existing.customMetadata || {}),
+      };
+      if (typeof title === "string") updatedMeta.title = title.slice(0, 120);
+      if (typeof folder === "string" && folder.trim()) updatedMeta.folder = folder.trim();
 
-    const updatedItem = formatR2Object(
-      {
-        key,
-        size: existing.size,
-        uploaded: existing.uploaded,
-        httpEtag: existing.httpEtag,
+      await env.BUCKET.put(k, existing.body, {
         httpMetadata: existing.httpMetadata,
         customMetadata: updatedMeta,
-      },
-      request,
-      env
-    );
+      });
 
-    return jsonResponse({ ok: true, item: updatedItem });
+      updatedItems.push(
+        formatR2Object(
+          {
+            key: k,
+            size: existing.size,
+            uploaded: existing.uploaded,
+            httpEtag: existing.httpEtag,
+            httpMetadata: existing.httpMetadata,
+            customMetadata: updatedMeta,
+          },
+          request,
+          env
+        )
+      );
+    }
+
+    return jsonResponse({ ok: true, items: updatedItems, item: updatedItems[0] || null });
   } catch (err) {
     return jsonResponse({ ok: false, error: err.message || "Update failed" }, 500);
   }
 }
 
-/**
- * DELETE /api/images
- * Body JSON: { key: "folder/file.jpg" } or { keys: ["a.jpg", "b.jpg"] }
- */
 export async function onRequestDelete(context) {
   const { request, env } = context;
 
@@ -393,12 +402,18 @@ export async function onRequestDelete(context) {
       return jsonResponse({ ok: false, error: "未指定要删除的文件 Key" }, 400);
     }
 
-    await env.BUCKET.delete(keysToDelete);
+    // Also delete associated .thumbs/ objects
+    const allDeleteTargets = [...keysToDelete];
+    for (const k of keysToDelete) {
+      const baseNoExt = k.replace(/\.[^/.]+$/, "");
+      allDeleteTargets.push(`.thumbs/${baseNoExt}.webp`);
+    }
 
-    // Also purge from Cloudflare Edge Cache if cached under /raw/
+    await env.BUCKET.delete(allDeleteTargets);
+
     const cache = caches.default;
     const origin = new URL(request.url).origin;
-    for (const k of keysToDelete) {
+    for (const k of allDeleteTargets) {
       const encoded = k.split("/").map(encodeURIComponent).join("/");
       const rawUrl = `${origin}/raw/${encoded}`;
       context.waitUntil(cache.delete(rawUrl));
