@@ -34,6 +34,9 @@ export async function onRequestGet(context) {
   }
 
   const key = pathSegments.map(seg => decodeURIComponent(seg)).join("/");
+  if (key.startsWith(".sys/")) {
+    return new Response("Forbidden", { status: 403 });
+  }
 
   const cacheUrl = new URL(request.url);
   const cacheKey = new Request(cacheUrl.toString(), request);

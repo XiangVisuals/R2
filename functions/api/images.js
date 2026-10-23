@@ -28,12 +28,22 @@ function getTokenFromRequest(request) {
   return (request.headers.get("X-Admin-Token") || "").trim();
 }
 
+const AUTH_CONFIG_KEY = ".sys/auth.json";
+
+async function sha256Hex(text) {
+  const data = new TextEncoder().encode(text);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 /**
  * Smartly resolve R2 Bucket and Admin Password from env,
- * supporting both standard names (BUCKET, ADMIN_PASSWORD) and case/common variations.
+ * supporting both standard names (BUCKET, ADMIN_PASSWORD), fuzzy env keys,
+ * AND R2-persisted encrypted password (.sys/auth.json) so Git deploys never break auth.
  */
 function resolveEnvBindings(env) {
-  // 1. Find R2 Bucket binding (checks env.BUCKET first, then scans any binding with R2 methods)
   let bucket = env.BUCKET || env.R2 || env.r2 || env.bucket || null;
   let bucketBindingName = bucket ? "BUCKET" : null;
 
@@ -53,36 +63,111 @@ function resolveEnvBindings(env) {
     }
   }
 
-  // 2. Find Admin Password binding
-  const passwordRaw =
+  let passwordRaw =
     env.ADMIN_PASSWORD ??
     env.admin_password ??
     env.PASSWORD ??
     env.password ??
     "";
-  const adminPassword = String(passwordRaw).trim();
 
+  if (!passwordRaw && env && typeof env === "object") {
+    for (const [k, v] of Object.entries(env)) {
+      if (typeof v === "string" && v.trim() && /pass|token|secret|auth|pwd/i.test(k)) {
+        passwordRaw = v;
+        break;
+      }
+    }
+  }
+
+  const adminPassword = String(passwordRaw).trim();
   return { bucket, bucketBindingName, adminPassword };
 }
 
-function verifyAdmin(request, env) {
-  const { adminPassword } = resolveEnvBindings(env);
-  if (!adminPassword) {
-    return {
-      authorized: false,
-      reason: "Cloudflare 后台尚未检测到 ADMIN_PASSWORD 变量（添加后需重新 Deploy 一次生效）",
-      misconfigured: true,
-    };
+async function readR2AuthHash(bucket) {
+  if (!bucket) return null;
+  try {
+    const obj = await bucket.get(AUTH_CONFIG_KEY);
+    if (!obj) return null;
+    const data = await obj.json();
+    return data && data.passwordHash ? String(data.passwordHash) : null;
+  } catch {
+    return null;
   }
+}
+
+async function writeR2AuthHash(bucket, plainPassword) {
+  const passwordHash = await sha256Hex(plainPassword);
+  await bucket.put(
+    AUTH_CONFIG_KEY,
+    JSON.stringify({
+      passwordHash,
+      updatedAt: new Date().toISOString(),
+    }),
+    {
+      httpMetadata: { contentType: "application/json" },
+    }
+  );
+  return passwordHash;
+}
+
+async function verifyAdmin(request, env) {
+  const { bucket, adminPassword } = resolveEnvBindings(env);
   const token = getTokenFromRequest(request);
-  if (!token || token !== adminPassword) {
+
+  // 1. If ADMIN_PASSWORD is set in Cloudflare Runtime Environment Variables, verify against it
+  if (adminPassword) {
+    if (!token || token !== adminPassword) {
+      return {
+        authorized: false,
+        reason: "密码错误，请重新输入 (INVALID PASSWORD)",
+      };
+    }
+    return { authorized: true, source: "env" };
+  }
+
+  // 2. Otherwise, use R2-persisted SHA-256 password (.sys/auth.json inside the R2 bucket)
+  if (bucket) {
+    const storedHash = await readR2AuthHash(bucket);
+    if (storedHash) {
+      if (!token) {
+        return {
+          authorized: false,
+          reason: "请输入访问密码 (PASSWORD REQUIRED)",
+        };
+      }
+      const attemptHash = await sha256Hex(token);
+      if (attemptHash !== storedHash) {
+        return {
+          authorized: false,
+          reason: "密码错误，请重新输入 (INVALID PASSWORD)",
+        };
+      }
+      return { authorized: true, source: "r2" };
+    }
+
+    // First-time initialization: if no password exists in env or R2 yet,
+    // lock the space to the first password the owner enters and persist its SHA-256 hash in R2!
+    if (!token) {
+      return {
+        authorized: false,
+        needsFirstSetup: true,
+        reason: "首次激活：输入您设置的密码即可绑定并锁定 R2 空间",
+      };
+    }
+
+    await writeR2AuthHash(bucket, token);
     return {
-      authorized: false,
-      reason: "密码错误，请重新输入 (INVALID PASSWORD)",
-      misconfigured: false,
+      authorized: true,
+      source: "r2-init",
+      firstTimeInitialized: true,
     };
   }
-  return { authorized: true };
+
+  return {
+    authorized: false,
+    misconfigured: true,
+    reason: "尚未检测到 R2 存储桶绑定 BUCKET",
+  };
 }
 
 function buildPublicUrl(key, request, env) {
@@ -141,7 +226,8 @@ export async function onRequestGet(context) {
   const { bucket, bucketBindingName, adminPassword } = resolveEnvBindings(env);
 
   const hasR2 = Boolean(bucket);
-  const hasPassword = Boolean(adminPassword);
+  const r2AuthHash = hasR2 && !adminPassword ? await readR2AuthHash(bucket) : null;
+  const hasPassword = Boolean(adminPassword || r2AuthHash);
 
   // Status probe without unlocking
   if (url.searchParams.get("action") === "status") {
@@ -150,16 +236,18 @@ export async function onRequestGet(context) {
       r2Bound: hasR2,
       bucketBindingName,
       passwordConfigured: hasPassword,
+      needsFirstSetup: hasR2 && !hasPassword,
     });
   }
 
-  // 1. ALWAYS verify password first when ADMIN_PASSWORD is set
-  const auth = verifyAdmin(request, env);
+  // 1. ALWAYS verify password first
+  const auth = await verifyAdmin(request, env);
   if (!auth.authorized) {
     return jsonResponse({
       ok: false,
       r2Bound: hasR2,
       passwordConfigured: hasPassword,
+      needsFirstSetup: Boolean(auth.needsFirstSetup),
       locked: true,
       misconfigured: auth.misconfigured,
       message: auth.reason,
@@ -171,11 +259,11 @@ export async function onRequestGet(context) {
     return jsonResponse({
       ok: false,
       r2Bound: false,
-      passwordConfigured: hasPassword,
+      passwordConfigured: true,
       isAdmin: true,
       items: [],
       folders: [],
-      message: "密码验证通过，但尚未检测到 R2 存储桶绑定（请在 Bindings 中绑定 BUCKET 后重新部署一次）。",
+      message: "密码验证通过，但尚未检测到 R2 存储桶绑定。",
     }, 200);
   }
 
@@ -204,7 +292,8 @@ export async function onRequestGet(context) {
     return jsonResponse({
       ok: true,
       r2Bound: true,
-      passwordConfigured: hasPassword,
+      passwordConfigured: true,
+      firstTimeInitialized: Boolean(auth.firstTimeInitialized),
       isAdmin: true,
       publicDomain: env.PUBLIC_R2_DOMAIN || new URL(request.url).origin + "/raw",
       items,
@@ -224,7 +313,7 @@ export async function onRequestGet(context) {
 export async function onRequestPost(context) {
   const { request, env } = context;
 
-  const auth = verifyAdmin(request, env);
+  const auth = await verifyAdmin(request, env);
   if (!auth.authorized) {
     return jsonResponse({ ok: false, error: auth.reason }, 401);
   }
@@ -343,7 +432,7 @@ export async function onRequestPost(context) {
 export async function onRequestPatch(context) {
   const { request, env } = context;
 
-  const auth = verifyAdmin(request, env);
+  const auth = await verifyAdmin(request, env);
   if (!auth.authorized) {
     return jsonResponse({ ok: false, error: auth.reason }, 401);
   }
@@ -355,6 +444,17 @@ export async function onRequestPatch(context) {
 
   try {
     const body = await request.json();
+
+    // Support changing the R2-persisted password directly from Settings
+    if (body.action === "changePassword") {
+      const nextPwd = String(body.newPassword || "").trim();
+      if (!nextPwd || nextPwd.length < 3) {
+        return jsonResponse({ ok: false, error: "新密码长度不能少于 3 位" }, 400);
+      }
+      await writeR2AuthHash(bucket, nextPwd);
+      return jsonResponse({ ok: true, message: "密码已加密保存至 R2 存储桶" });
+    }
+
     const keys = Array.isArray(body.keys) ? body.keys : (body.key ? [body.key] : []);
     const { title, folder } = body;
 
@@ -404,7 +504,7 @@ export async function onRequestPatch(context) {
 export async function onRequestDelete(context) {
   const { request, env } = context;
 
-  const auth = verifyAdmin(request, env);
+  const auth = await verifyAdmin(request, env);
   if (!auth.authorized) {
     return jsonResponse({ ok: false, error: auth.reason }, 401);
   }

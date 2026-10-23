@@ -380,10 +380,10 @@ document.addEventListener("DOMContentLoaded", () => {
             if (lockFooterHint) {
                 if (info.r2Bound && info.passwordConfigured) {
                     lockFooterHint.textContent = 'CLOUDFLARE R2 NODE READY · 节点与密码保护已生效';
-                } else if (!info.passwordConfigured) {
-                    lockFooterHint.textContent = '请在 Cloudflare Variables 中添加 ADMIN_PASSWORD';
+                } else if (info.r2Bound && info.needsFirstSetup) {
+                    lockFooterHint.textContent = 'R2 存储桶已连接 · 首次输入您的密码将自动加密锁定此空间';
                 } else if (!info.r2Bound) {
-                    lockFooterHint.textContent = '密码保护已生效 · 请在 Cloudflare Bindings 绑定 R2 存储桶';
+                    lockFooterHint.textContent = '请在 Cloudflare Bindings 绑定 R2 存储桶 BUCKET';
                 }
             }
         } catch {
@@ -422,7 +422,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const data = await res.json();
 
-            // 1. 密码错误或未配置 ADMIN_PASSWORD：严格拦截，绝不进入演示模式！
+            // 1. 密码错误：严格拦截，绝不进入演示模式！
             if (res.status === 401 || res.status === 403 || data.locked || !data.isAdmin) {
                 localStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
                 adminToken = '';
@@ -439,7 +439,11 @@ document.addEventListener("DOMContentLoaded", () => {
             localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
             isR2Connected = Boolean(data.r2Bound);
 
-            // 3. 如果密码正确但 R2 存储桶绑定被重置（例如 git push 后需在后台重新勾选 R2 绑定）
+            if (data.firstTimeInitialized) {
+                toast('已将您的密码 SHA-256 加密锁定至 R2 存储桶！');
+            }
+
+            // 3. 如果密码正确但 R2 存储桶未绑定
             if (!isR2Connected) {
                 allImages = []; // 绝不混入假演示图片！
                 if (r2ConnStatus) {
@@ -458,7 +462,7 @@ document.addEventListener("DOMContentLoaded", () => {
             // 4. 密码正确且 R2 已连接：加载真实云端图片
             allImages = Array.isArray(data.items) ? data.items : [];
             if (r2ConnStatus) {
-                r2ConnStatus.textContent = `R2 CONNECTED · 已连接云端存储桶 (${data.bucketBinding || 'BUCKET'} · 共 ${allImages.length} 张影像)`;
+                r2ConnStatus.textContent = `R2 CONNECTED · 已连接云端存储桶 (images · 共 ${allImages.length} 张影像)`;
             }
             const emptyTitle = document.querySelector('.empty-title');
             const emptySub = document.querySelector('.empty-sub');
@@ -1517,11 +1521,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const settingsModal = document.getElementById('settings-modal');
     const selectUploadMode = document.getElementById('select-upload-mode');
     const inputCustomDomain = document.getElementById('input-custom-domain');
+    const inputNewPassword = document.getElementById('input-new-password');
 
     function openSettings() {
         updateStorageQuotaUI();
         if (selectUploadMode) selectUploadMode.value = uploadMode;
         if (inputCustomDomain) inputCustomDomain.value = customDomain;
+        if (inputNewPassword) inputNewPassword.value = '';
         settingsModal?.classList.add('open');
     }
 
@@ -1535,14 +1541,41 @@ document.addEventListener("DOMContentLoaded", () => {
         if (e.target === settingsModal) closeSettings();
     });
 
-    document.getElementById('btn-save-settings')?.addEventListener('click', () => {
+    document.getElementById('btn-save-settings')?.addEventListener('click', async () => {
         uploadMode = selectUploadMode?.value || 'original';
         customDomain = (inputCustomDomain?.value || '').trim();
         localStorage.setItem(STORAGE_KEYS.UPLOAD_MODE, uploadMode);
         localStorage.setItem(STORAGE_KEYS.CUSTOM_DOMAIN, customDomain);
+
+        const nextPwd = (inputNewPassword?.value || '').trim();
+        if (nextPwd && isR2Connected) {
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+                const res = await fetch('/api/images', {
+                    method: 'PATCH',
+                    headers,
+                    body: JSON.stringify({ action: 'changePassword', newPassword: nextPwd })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) {
+                    toast(data.error || '密码修改失败');
+                    return;
+                }
+                adminToken = nextPwd;
+                localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
+                if (inputNewPassword) inputNewPassword.value = '';
+                toast('密码已更新并加密保存至 R2');
+            } catch {
+                toast('网络错误，密码修改失败');
+                return;
+            }
+        } else {
+            toast('SETTINGS SAVED');
+        }
+
         closeSettings();
         renderSpace();
-        toast('SETTINGS SAVED');
     });
 
     document.getElementById('btn-lock-now')?.addEventListener('click', () => {
