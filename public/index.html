@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>XIANG — Space</title>
+    <link rel="icon" href="https://cllli.oss-cn-beijing.aliyuncs.com/logo/logo.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@300;400;500&family=Montserrat:wght@300;400;500&display=swap">
+    <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+    <!-- 全局文件隐藏选择器 -->
+    <input type="file" id="file-input" multiple accept="image/*" hidden>
+
+    <!-- 全屏拖拽上传轻盈遮罩 (仅在拖入文件到窗口时浮现) -->
+    <div id="drop-overlay" class="drop-overlay" aria-hidden="true">
+        <div class="drop-frame">
+            <span class="drop-plus">+</span>
+            <p class="drop-title">DROP TO UPLOAD</p>
+            <span class="drop-sub" id="drop-target-hint">松开鼠标上传至当前分类</span>
+        </div>
+    </div>
+
+    <!-- 极简顶栏：品牌标识 + 文件夹标签 + 搜索 + 上传 -->
+    <header class="top-bar" id="top-bar">
+        <div class="bar-left">
+            <a href="/" class="brand" aria-label="XIANG SPACE">
+                <span class="brand-mark"></span>
+                <span class="brand-name">XIANG</span>
+                <span class="brand-tag" id="storage-stat">0</span>
+            </a>
+
+            <nav class="folder-tabs" id="folder-tabs" aria-label="Folders">
+                <button class="tab-item active" data-folder="all">ALL</button>
+            </nav>
+            <button class="new-folder-btn" id="btn-new-folder" title="新建或切换分类目录">+</button>
+        </div>
+
+        <div class="bar-right">
+            <div class="search-wrap">
+                <input type="text" id="search-input" class="search-input" placeholder="Search..." autocomplete="off">
+            </div>
+
+            <button class="text-btn" id="btn-upload" title="上传图片 (也可直接拖拽或 Ctrl+V 粘贴)">
+                <span>+ UPLOAD</span>
+            </button>
+
+            <button class="icon-btn" id="btn-auth" title="管理员密钥与设置" aria-label="Settings">
+                <span class="status-dot" id="auth-dot"></span>
+            </button>
+        </div>
+    </header>
+
+    <!-- 顶部极细上传进度条与状态提示 (仅在上传进行中时出现) -->
+    <div class="upload-ribbon" id="upload-ribbon" hidden>
+        <div class="ribbon-track">
+            <div class="ribbon-bar" id="ribbon-bar"></div>
+        </div>
+        <div class="ribbon-info">
+            <span id="ribbon-text">Uploading...</span>
+            <span id="ribbon-percent">0%</span>
+        </div>
+    </div>
+
+    <!-- 主画布：纯粹的图片网格空间 -->
+    <main class="space-main" id="space-main">
+        <!-- 空状态：本身就是优雅的上传区域 -->
+        <div class="empty-stage" id="empty-stage" hidden>
+            <div class="empty-box" id="empty-drop-trigger">
+                <span class="empty-plus">+</span>
+                <p class="empty-title">拖拽图片至此，或按 ⌘V 粘贴上传</p>
+                <span class="empty-sub">支持 JPG · PNG · WebP · GIF · SVG</span>
+            </div>
+        </div>
+
+        <!-- 自适应流式图片网格 -->
+        <div class="photo-grid" id="photo-grid"></div>
+    </main>
+
+    <!-- 底部悬浮多选胶囊栏 (仅当选中 1 张以上图片时优雅浮现) -->
+    <div class="selection-dock" id="selection-dock" hidden>
+        <span class="sel-count" id="sel-count">0 SELECTED</span>
+        <span class="sel-sep"></span>
+        <button type="button" class="dock-action" id="btn-sel-all">ALL</button>
+        <button type="button" class="dock-action" id="btn-sel-copy-url">COPY URL</button>
+        <button type="button" class="dock-action" id="btn-sel-copy-md">MARKDOWN</button>
+        <button type="button" class="dock-action danger" id="btn-sel-delete">DELETE</button>
+        <button type="button" class="dock-close" id="btn-sel-clear" title="取消选择 (Esc)">✕</button>
+    </div>
+
+    <!-- 极简详情抽屉 / 预览模态层 (点击图片时打开) -->
+    <div class="viewer-backdrop" id="viewer-modal" aria-hidden="true">
+        <div class="viewer-layout">
+            <!-- 左侧：纯净大图预览区 -->
+            <div class="viewer-stage" id="viewer-stage">
+                <button class="nav-arrow prev" id="viewer-prev" aria-label="Previous">‹</button>
+                <img id="viewer-img" class="viewer-img" alt="">
+                <button class="nav-arrow next" id="viewer-next" aria-label="Next">›</button>
+            </div>
+
+            <!-- 右侧：极简信息与操作栏 -->
+            <aside class="viewer-sidebar">
+                <div class="sidebar-top">
+                    <div class="file-header">
+                        <input type="text" id="meta-title-input" class="title-input" placeholder="未命名影像" title="点击修改标题">
+                        <button class="viewer-close" id="viewer-close" title="关闭 (Esc)">✕</button>
+                    </div>
+
+                    <div class="file-Quick-stats" id="meta-quick-stats">
+                        <span id="stat-dimensions">— × —</span>
+                        <span>·</span>
+                        <span id="stat-size">—</span>
+                        <span>·</span>
+                        <span id="stat-date">—</span>
+                    </div>
+
+                    <!-- 所在文件夹切换 -->
+                    <div class="meta-row-field">
+                        <label class="field-label">FOLDER</label>
+                        <div class="folder-edit-group">
+                            <input type="text" id="meta-folder-input" class="minimal-input" placeholder="default">
+                            <button type="button" id="btn-save-meta" class="minimal-save-btn">SAVE</button>
+                        </div>
+                    </div>
+
+                    <!-- 一键复制链接 (点击整行即复制) -->
+                    <div class="links-block">
+                        <label class="field-label">LINKS · 点击即可复制</label>
+                        <button type="button" class="copy-line" data-format="url">
+                            <span class="copy-tag">URL</span>
+                            <span class="copy-val" id="val-url"></span>
+                        </button>
+                        <button type="button" class="copy-line" data-format="md">
+                            <span class="copy-tag">MD</span>
+                            <span class="copy-val" id="val-md"></span>
+                        </button>
+                        <button type="button" class="copy-line" data-format="html">
+                            <span class="copy-tag">HTML</span>
+                            <span class="copy-val" id="val-html"></span>
+                        </button>
+                    </div>
+
+                    <!-- EXIF 信息 (仅当图片包含 EXIF 时显示，干净无冗余) -->
+                    <div class="exif-block" id="exif-block">
+                        <label class="field-label">OPTICAL EXIF</label>
+                        <div class="exif-list" id="exif-list"></div>
+                    </div>
+                </div>
+
+                <div class="sidebar-bottom">
+                    <a id="btn-download" href="#" download target="_blank" class="bottom-action">DOWNLOAD 原图</a>
+                    <button type="button" id="btn-delete-single" class="bottom-action danger">DELETE 删除</button>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- 极简设置与鉴权弹窗 (点击右上角圆点触发) -->
+    <div class="settings-backdrop" id="settings-modal" aria-hidden="true">
+        <div class="settings-card">
+            <div class="settings-head">
+                <span class="settings-title">SPACE SETTINGS</span>
+                <button class="viewer-close" id="settings-close">✕</button>
+            </div>
+
+            <div class="settings-status" id="r2-conn-status">Checking R2 status...</div>
+
+            <div class="settings-field">
+                <label class="field-label">ADMIN PASSWORD · 管理员密钥</label>
+                <input type="password" id="input-admin-token" class="minimal-input" placeholder="输入 Cloudflare ADMIN_PASSWORD...">
+            </div>
+
+            <div class="settings-field">
+                <label class="field-label">UPLOAD OPTIMIZATION · 上传预处理</label>
+                <select id="select-upload-mode" class="minimal-input">
+                    <option value="original">保留原图无损上传 (Original)</option>
+                    <option value="webp-4k">自动转 WebP · 最大 4K (3840px)</option>
+                    <option value="webp-2k">自动转 WebP · 最大 2.5K (2560px)</option>
+                </select>
+            </div>
+
+            <div class="settings-field">
+                <label class="field-label">CUSTOM DOMAIN · 自定义外链域名 (可选)</label>
+                <input type="text" id="input-custom-domain" class="minimal-input" placeholder="例如 https://img.xiangvisuals.com">
+            </div>
+
+            <div class="settings-foot">
+                <button type="button" class="bottom-action" id="btn-logout">LOGOUT</button>
+                <button type="button" class="bottom-action primary" id="btn-save-settings">SAVE 保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 极简轻提示 -->
+    <div id="toast-box" class="toast-box"></div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

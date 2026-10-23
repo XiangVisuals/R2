@@ -1,0 +1,10 @@
+{
+  "name": "xiang-r2-vault",
+  "version": "1.0.0",
+  "private": true,
+  "description": "XIANGVISUALS R2 Optical Image Hosting & Visual Archive System",
+  "scripts": {
+    "dev": "npx wrangler pages dev public --r2 BUCKET --binding ADMIN_PASSWORD=admin",
+    "deploy": "npx wrangler pages deploy public"
+  }
+}
