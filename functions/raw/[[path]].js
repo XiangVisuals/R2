@@ -1,17 +1,27 @@
 /**
- * XIANGVISUALS R2 VAULT — High-Speed Edge Image Delivery & Cache Layer
+ * XIANG SPACE — High-Speed Edge Image Delivery & Cache Layer
  * Route: /raw/[[path]]
- * Features:
- * - Zero-cost Edge CDN caching (Cache-Control: public, max-age=31536000, immutable)
- * - ETag & If-None-Match 304 Not Modified support
- * - Range request support
- * - CORS headers for cross-origin WebGL / Canvas / Gallery usage
  */
+
+function resolveBucket(env) {
+  if (env.BUCKET || env.R2 || env.r2 || env.bucket) {
+    return env.BUCKET || env.R2 || env.r2 || env.bucket;
+  }
+  if (env && typeof env === "object") {
+    for (const v of Object.values(env)) {
+      if (v && typeof v === "object" && typeof v.get === "function" && typeof v.put === "function") {
+        return v;
+      }
+    }
+  }
+  return null;
+}
 
 export async function onRequestGet(context) {
   const { request, env, params } = context;
+  const bucket = resolveBucket(env);
 
-  if (!env.BUCKET) {
+  if (!bucket) {
     return new Response("R2 Bucket binding 'BUCKET' is not configured.", {
       status: 503,
       headers: { "Content-Type": "text/plain; charset=utf-8" }
@@ -25,7 +35,6 @@ export async function onRequestGet(context) {
 
   const key = pathSegments.map(seg => decodeURIComponent(seg)).join("/");
 
-  // 1. Check Cloudflare Edge Cache first
   const cacheUrl = new URL(request.url);
   const cacheKey = new Request(cacheUrl.toString(), request);
   const cache = caches.default;
@@ -35,8 +44,7 @@ export async function onRequestGet(context) {
     return response;
   }
 
-  // 2. Fetch from R2 Bucket
-  const object = await env.BUCKET.get(key, {
+  const object = await bucket.get(key, {
     onlyIf: request.headers,
     range: request.headers,
   });
@@ -70,7 +78,6 @@ export async function onRequestGet(context) {
     headers.set("Content-Type", mimeMap[ext] || "application/octet-stream");
   }
 
-  // If 304 Not Modified (body is absent on R2Object vs R2ObjectBody)
   if (!("body" in object)) {
     return new Response(null, { status: 304, headers });
   }
@@ -80,7 +87,6 @@ export async function onRequestGet(context) {
     headers,
   });
 
-  // 3. Store in Cloudflare Edge Cache asynchronously
   if (response.status === 200) {
     context.waitUntil(cache.put(cacheKey, response.clone()));
   }
@@ -90,13 +96,14 @@ export async function onRequestGet(context) {
 
 export async function onRequestHead(context) {
   const { env, params } = context;
-  if (!env.BUCKET) return new Response(null, { status: 503 });
+  const bucket = resolveBucket(env);
+  if (!bucket) return new Response(null, { status: 503 });
 
   const pathSegments = params.path;
   if (!pathSegments || pathSegments.length === 0) return new Response(null, { status: 400 });
 
   const key = pathSegments.map(seg => decodeURIComponent(seg)).join("/");
-  const object = await env.BUCKET.head(key);
+  const object = await bucket.head(key);
 
   if (object === null) return new Response(null, { status: 404 });
 

@@ -14,7 +14,8 @@
 <body class="locked">
 
     <!-- =========================================================
-         0. 首屏密码门禁 (Minimalist Password Lock Screen)
+         0. 首屏密码门禁 (Strict Password Lock Screen)
+         严格校验 Cloudflare ADMIN_PASSWORD，绝不随意放行
     ========================================================= -->
     <div id="lock-screen" class="lock-screen">
         <div class="lock-box">
@@ -32,7 +33,7 @@
                 <div class="lock-error" id="lock-error"></div>
             </form>
 
-            <div class="lock-footer-hint" id="lock-footer-hint">CLOUDFLARE R2 EDGE STORAGE</div>
+            <div class="lock-footer-hint" id="lock-footer-hint">CHECKING CLOUDFLARE R2 NODE...</div>
         </div>
     </div>
 
@@ -49,7 +50,7 @@
     </div>
 
     <!-- =========================================================
-         1. 极简顶栏：品牌标识 + 彩色分类标签 + 容量仪表 + 搜索 + 批量 + 上传
+         1. 极简顶栏：品牌标识 + 彩色分类标签 + 缩略图缩放器 + 容量仪表 + 搜索 + 批量 + 上传
     ========================================================= -->
     <header class="top-bar" id="top-bar">
         <div class="bar-left">
@@ -59,14 +60,23 @@
                 <span class="brand-tag" id="storage-stat">0</span>
             </a>
 
-            <nav class="folder-tabs" id="folder-tabs" aria-label="Folders">
-                <button class="tab-item active" data-folder="all">ALL</button>
-            </nav>
-            <button class="new-folder-btn" id="btn-new-folder" title="新建分类文件夹">+</button>
+            <div class="folder-nav-wrap">
+                <nav class="folder-tabs" id="folder-tabs" aria-label="Folders">
+                    <button class="tab-item active" data-folder="all">ALL</button>
+                </nav>
+                <button class="new-folder-btn" id="btn-new-folder" title="新建分类文件夹">+</button>
+            </div>
         </div>
 
         <div class="bar-right">
-            <!-- R2 10GB 免费存储空间实时仪表 (点击可打开详细空间分布卡片) -->
+            <!-- 仿 iPhone 相册：缩略图尺寸无级调节器 (支持点击 - / + 或滑动滑杆) -->
+            <div class="zoom-scaler" title="调节缩略图大小 (仿 iPhone 相册缩放)">
+                <button type="button" class="zoom-step-btn" id="btn-zoom-out" aria-label="Smaller thumbnails">−</button>
+                <input type="range" id="zoom-slider" class="zoom-slider" min="1" max="5" step="1" value="3">
+                <button type="button" class="zoom-step-btn" id="btn-zoom-in" aria-label="Larger thumbnails">+</button>
+            </div>
+
+            <!-- R2 10GB 免费存储空间实时仪表 -->
             <button type="button" class="quota-pill" id="btn-quota-detail" title="点击查看 Cloudflare R2 可用空间详情 (免费额度 10 GB)">
                 <div class="quota-text-row">
                     <span class="quota-used" id="quota-pill-text">0 MB / 10 GB</span>
@@ -113,7 +123,7 @@
         <div class="empty-stage" id="empty-stage" hidden>
             <div class="empty-box" id="empty-drop-trigger">
                 <span class="empty-plus">+</span>
-                <p class="empty-title">拖拽图片至此，或按 ⌘V 粘贴上传</p>
+                <p class="empty-title">当前存储桶暂无图片 · 点击或拖拽上传</p>
                 <span class="empty-sub">支持 JPG · PNG · WebP · GIF · SVG 真实比例时间线归档</span>
             </div>
         </div>
@@ -123,7 +133,28 @@
     </main>
 
     <!-- =========================================================
-         3. 底部悬浮批量管理控制台
+         3. 移动端专属底部玻璃悬浮操作栏 (iOS Photos Style Bottom Bar)
+         仅在手机端显示，单手拇指即可调节缩略图大小、快速上传、批量多选、查看空间
+    ========================================================= -->
+    <nav class="mobile-bottom-bar" id="mobile-bottom-bar" aria-label="Mobile Quick Actions">
+        <div class="mob-zoom-group">
+            <button type="button" class="mob-zoom-btn" id="mob-zoom-out" aria-label="密集小图">−</button>
+            <span class="mob-zoom-label" id="mob-zoom-label">3列</span>
+            <button type="button" class="mob-zoom-btn" id="mob-zoom-in" aria-label="大图预览">+</button>
+        </div>
+
+        <button type="button" class="mob-upload-fab" id="mob-btn-upload">
+            <span>+ 上传图片</span>
+        </button>
+
+        <div class="mob-right-group">
+            <button type="button" class="mob-tool-btn" id="mob-btn-batch">多选</button>
+            <button type="button" class="mob-tool-btn" id="mob-btn-quota">空间</button>
+        </div>
+    </nav>
+
+    <!-- =========================================================
+         4. 底部悬浮批量管理控制台
     ========================================================= -->
     <div class="selection-dock" id="selection-dock" hidden>
         <div class="dock-left">
@@ -140,31 +171,32 @@
                     <option value="">MOVE TO 移动至...</option>
                 </select>
             </div>
-            <button type="button" class="dock-action" id="btn-sel-copy-url">COPY URL</button>
-            <button type="button" class="dock-action" id="btn-sel-copy-md">MARKDOWN</button>
+            <button type="button" class="dock-action" id="btn-sel-copy-url">URL</button>
+            <button type="button" class="dock-action" id="btn-sel-copy-md">MD</button>
             <button type="button" class="dock-action" id="btn-sel-copy-html">HTML</button>
-            <button type="button" class="dock-action" id="btn-sel-download">DOWNLOAD</button>
-            <button type="button" class="dock-action danger" id="btn-sel-delete">DELETE</button>
+            <button type="button" class="dock-action" id="btn-sel-download">下载</button>
+            <button type="button" class="dock-action danger" id="btn-sel-delete">删除</button>
         </div>
 
         <button type="button" class="dock-close" id="btn-sel-clear" title="退出批量模式 (Esc)">✕</button>
     </div>
 
     <!-- =========================================================
-         4. 零卡顿极速详情检视层 (Zero-Jank Instant Viewer)
-         移除耗时高斯模糊与大阴影，默认展示已解码缩略图，可按需一键加载超清原图
+         5. 零卡顿极速详情检视层 (Zero-Jank Instant Viewer)
+         移动端支持左右滑动切换图片、下滑关闭抽屉
     ========================================================= -->
     <div class="viewer-backdrop" id="viewer-modal" aria-hidden="true">
         <div class="viewer-layout">
             <!-- 左侧：纯净大图预览区 -->
             <div class="viewer-stage" id="viewer-stage">
                 <button type="button" class="hd-badge-btn" id="btn-load-hd" hidden title="点击加载原始未压缩大图">LOAD ORIGINAL HD</button>
+                <button type="button" class="mobile-viewer-close" id="mobile-viewer-close" aria-label="Close">✕</button>
                 <button class="nav-arrow prev" id="viewer-prev" aria-label="Previous">‹</button>
                 <img id="viewer-img" class="viewer-img" alt="">
                 <button class="nav-arrow next" id="viewer-next" aria-label="Next">›</button>
             </div>
 
-            <!-- 右侧：极简信息与操作栏 -->
+            <!-- 右侧 / 移动端底部抽屉：极简信息与操作栏 -->
             <aside class="viewer-sidebar">
                 <div class="sidebar-top">
                     <div class="file-header">
@@ -223,7 +255,7 @@
     </div>
 
     <!-- =========================================================
-         5. 空间设置与 R2 存储容量监控弹窗 (Storage Quota & Settings)
+         6. 空间设置与 R2 存储容量监控弹窗
     ========================================================= -->
     <div class="settings-backdrop" id="settings-modal" aria-hidden="true">
         <div class="settings-card">
@@ -239,7 +271,6 @@
                     <span class="meter-pct" id="meter-pct">0.0%</span>
                 </div>
 
-                <!-- 多彩分类占比进度条 -->
                 <div class="meter-bar-multi" id="meter-bar-multi"></div>
 
                 <div class="meter-stats-row">
@@ -247,7 +278,6 @@
                     <span>可用 FREE: <strong id="meter-free-val">10.00 GB</strong></span>
                 </div>
 
-                <!-- 各分类占用明细 -->
                 <div class="meter-cat-breakdown" id="meter-cat-breakdown"></div>
             </div>
 

@@ -14,15 +14,27 @@ document.addEventListener("DOMContentLoaded", () => {
         ADMIN_TOKEN: 'xiang_r2_token',
         CUSTOM_DOMAIN: 'xiang_r2_domain',
         UPLOAD_MODE: 'xiang_r2_upload_mode',
-        LOCAL_ITEMS: 'xiang_r2_local_items'
+        LOCAL_ITEMS: 'xiang_r2_local_items',
+        ZOOM_DESKTOP: 'xiang_r2_zoom_desktop',
+        ZOOM_MOBILE: 'xiang_r2_zoom_mobile'
     };
 
     // Cloudflare R2 Free Tier = 10 GB (10 * 1024 * 1024 * 1024 bytes)
     const R2_FREE_QUOTA_BYTES = 10 * 1024 * 1024 * 1024;
 
+    const isLocalhost = (
+        location.hostname === 'localhost' ||
+        location.hostname === '127.0.0.1' ||
+        location.protocol === 'file:'
+    );
+
     let adminToken = localStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN) || '';
     let customDomain = localStorage.getItem(STORAGE_KEYS.CUSTOM_DOMAIN) || '';
     let uploadMode = localStorage.getItem(STORAGE_KEYS.UPLOAD_MODE) || 'original';
+
+    // 仿 iPhone 相册缩略图档位：桌面端 1..5 (对应 7, 5, 4, 3, 2 列)，手机端 1..4 (对应 5, 3, 2, 1 列)
+    let desktopZoomLevel = Math.min(5, Math.max(1, parseInt(localStorage.getItem(STORAGE_KEYS.ZOOM_DESKTOP) || '3', 10)));
+    let mobileZoomLevel = Math.min(4, Math.max(1, parseInt(localStorage.getItem(STORAGE_KEYS.ZOOM_MOBILE) || '3', 10)));
 
     let isR2Connected = false;
     let isUnlocked = false;
@@ -133,9 +145,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function formatDateHeading(isoStr) {
-        if (!isoStr) return { code: 'ARCHIVE', label: 'EARLIER' };
+        if (!isoStr) return { key: 'ARCHIVE', title: 'ARCHIVE', sub: 'EARLIER' };
         const d = new Date(isoStr);
-        if (isNaN(d.getTime())) return { code: 'ARCHIVE', label: 'EARLIER' };
+        if (isNaN(d.getTime())) return { key: 'ARCHIVE', title: 'ARCHIVE', sub: 'EARLIER' };
 
         const yyyy = d.getFullYear();
         const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -271,7 +283,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if (meterUsedVal) meterUsedVal.textContent = `${usedFormatted} (${allImages.length} 张)`;
         if (meterFreeVal) meterFreeVal.textContent = freeGB;
 
-        // 按分类统计空间占用
         const catBytesMap = new Map();
         allImages.forEach(item => {
             const f = item.folder || 'default';
@@ -312,9 +323,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     document.getElementById('btn-quota-detail')?.addEventListener('click', () => openSettings());
+    document.getElementById('mob-btn-quota')?.addEventListener('click', () => openSettings());
 
     /* =========================================================
-       3. 首屏密码门禁 (Password Lock Screen)
+       3. 首屏严格密码门禁 (Strict Password Lock Screen)
+          绝不在云端环境随意放行或回退演示模式
     ========================================================= */
     const lockScreen = document.getElementById('lock-screen');
     const lockForm = document.getElementById('lock-form');
@@ -332,6 +345,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function showLockUI(hintMessage = '') {
         isUnlocked = false;
+        document.body.classList.remove('batch-active');
         document.body.classList.add('locked');
         lockScreen?.classList.remove('unlocked');
         if (hintMessage && lockError) {
@@ -340,71 +354,127 @@ document.addEventListener("DOMContentLoaded", () => {
         setTimeout(() => lockInput?.focus(), 80);
     }
 
+    function triggerLockShake(msg) {
+        if (lockError) lockError.textContent = msg;
+        if (lockForm) {
+            lockForm.classList.remove('shake');
+            void lockForm.offsetWidth;
+            lockForm.classList.add('shake');
+        }
+    }
+
+    // 页面启动时探测 Cloudflare 节点绑定状态
+    async function probeServerStatus() {
+        try {
+            const res = await fetch('/api/images?action=status', { cache: 'no-store' });
+            const ct = res.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                if (lockFooterHint) {
+                    lockFooterHint.textContent = isLocalhost
+                        ? 'LOCAL DEV · 本地开发预览模式'
+                        : 'CLOUDFLARE EDGE · 请输入访问密码';
+                }
+                return;
+            }
+            const info = await res.json();
+            if (lockFooterHint) {
+                if (info.r2Bound && info.passwordConfigured) {
+                    lockFooterHint.textContent = 'CLOUDFLARE R2 NODE READY · 节点与密码保护已生效';
+                } else if (!info.passwordConfigured) {
+                    lockFooterHint.textContent = '请在 Cloudflare Variables 中添加 ADMIN_PASSWORD';
+                } else if (!info.r2Bound) {
+                    lockFooterHint.textContent = '密码保护已生效 · 请在 Cloudflare Bindings 绑定 R2 存储桶';
+                }
+            }
+        } catch {
+            if (lockFooterHint) {
+                lockFooterHint.textContent = isLocalhost
+                    ? 'LOCAL DEV · 本地预览模式'
+                    : 'PROTECTED BY CLOUDFLARE R2 EDGE';
+            }
+        }
+    }
+
     async function tryUnlockAndLoad(passwordAttempt, isInitialAutoCheck = false) {
         try {
             const headers = {};
             if (passwordAttempt) headers['Authorization'] = `Bearer ${passwordAttempt}`;
 
-            const res = await fetch('/api/images', { headers });
+            const res = await fetch('/api/images', { headers, cache: 'no-store' });
             const ct = res.headers.get('content-type') || '';
 
+            // 仅当在本地 localhost 静态打开且无 Worker 路由时允许本地演示
             if (!ct.includes('application/json')) {
-                isR2Connected = false;
-                if (!passwordAttempt) {
-                    if (lockFooterHint) lockFooterHint.textContent = 'LOCAL DEMO MODE · 输入任意密码即可进入演示空间';
+                if (!isLocalhost) {
+                    triggerLockShake('API 路由未就绪，请等待 Cloudflare 部署完成并刷新页面');
                     return false;
                 }
+                isR2Connected = false;
+                if (!passwordAttempt) return false;
                 adminToken = passwordAttempt;
                 localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
                 allImages = loadLocalItems();
-                if (r2ConnStatus) r2ConnStatus.textContent = 'LOCAL PREVIEW · 本地演示模式';
+                if (r2ConnStatus) r2ConnStatus.textContent = 'LOCAL PREVIEW · 本地开发演示模式';
                 unlockUI();
                 renderSpace();
                 return true;
             }
 
             const data = await res.json();
+
+            // 1. 密码错误或未配置 ADMIN_PASSWORD：严格拦截，绝不进入演示模式！
+            if (res.status === 401 || res.status === 403 || data.locked || !data.isAdmin) {
+                localStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
+                adminToken = '';
+                if (!isInitialAutoCheck) {
+                    triggerLockShake(data.message || '密码错误，请重新输入 (INVALID PASSWORD)');
+                } else {
+                    showLockUI();
+                }
+                return false;
+            }
+
+            // 2. 密码验证通过！保存正确密码
+            adminToken = passwordAttempt;
+            localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
             isR2Connected = Boolean(data.r2Bound);
 
+            // 3. 如果密码正确但 R2 存储桶绑定被重置（例如 git push 后需在后台重新勾选 R2 绑定）
             if (!isR2Connected) {
-                if (!passwordAttempt) {
-                    if (lockFooterHint) lockFooterHint.textContent = 'R2 BUCKET NOT BOUND · 输入密码进入演示模式';
-                    return false;
+                allImages = []; // 绝不混入假演示图片！
+                if (r2ConnStatus) {
+                    r2ConnStatus.textContent = '⚠️ R2 存储桶未绑定：请在 Cloudflare -> Settings -> Bindings 绑定 R2 桶 (变量名填 BUCKET)';
                 }
-                adminToken = passwordAttempt;
-                localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
-                allImages = loadLocalItems();
-                if (r2ConnStatus) r2ConnStatus.textContent = 'R2 未绑定 BUCKET · 当前为演示模式';
+                const emptyTitle = document.querySelector('.empty-title');
+                const emptySub = document.querySelector('.empty-sub');
+                if (emptyTitle) emptyTitle.textContent = '密码验证通过，但尚未检测到 R2 存储桶绑定';
+                if (emptySub) emptySub.textContent = '请前往 Cloudflare Workers -> Settings -> Bindings 添加 R2 bucket 绑定 (名称: BUCKET)';
                 unlockUI();
                 renderSpace();
+                toast('请绑定 R2 存储桶 BUCKET');
                 return true;
             }
 
-            if (res.status === 401 || data.locked) {
-                if (!isInitialAutoCheck) {
-                    if (lockError) lockError.textContent = data.message || '密码错误 (INVALID PASSWORD)';
-                    lockForm?.classList.remove('shake');
-                    void lockForm?.offsetWidth;
-                    lockForm?.classList.add('shake');
-                }
-                return false;
-            }
-
-            if (!data.passwordConfigured && !passwordAttempt) {
-                if (lockFooterHint) lockFooterHint.textContent = '请在 Cloudflare 设置 ADMIN_PASSWORD 环境变量';
-                return false;
-            }
-
-            adminToken = passwordAttempt;
-            localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
+            // 4. 密码正确且 R2 已连接：加载真实云端图片
             allImages = Array.isArray(data.items) ? data.items : [];
             if (r2ConnStatus) {
-                r2ConnStatus.textContent = `R2 CONNECTED · 已连接云端存储桶 (${allImages.length} 张影像)`;
+                r2ConnStatus.textContent = `R2 CONNECTED · 已连接云端存储桶 (${data.bucketBinding || 'BUCKET'} · 共 ${allImages.length} 张影像)`;
             }
+            const emptyTitle = document.querySelector('.empty-title');
+            const emptySub = document.querySelector('.empty-sub');
+            if (emptyTitle) emptyTitle.textContent = '当前 R2 存储桶暂无图片 · 点击或拖拽上传第一张作品';
+            if (emptySub) emptySub.textContent = '支持 JPG · PNG · WebP · GIF · SVG 真实比例时间线归档';
+
             unlockUI();
             renderSpace();
             return true;
         } catch {
+            if (!isLocalhost) {
+                if (!isInitialAutoCheck) {
+                    triggerLockShake('网络连接失败，请稍后重试');
+                }
+                return false;
+            }
             isR2Connected = false;
             if (!passwordAttempt) return false;
             adminToken = passwordAttempt;
@@ -420,10 +490,7 @@ document.addEventListener("DOMContentLoaded", () => {
         e.preventDefault();
         const val = (lockInput?.value || '').trim();
         if (!val) {
-            if (lockError) lockError.textContent = '请输入访问密码 (PLEASE ENTER PASSWORD)';
-            lockForm.classList.remove('shake');
-            void lockForm.offsetWidth;
-            lockForm.classList.add('shake');
+            triggerLockShake('请输入访问密码 (PLEASE ENTER PASSWORD)');
             return;
         }
         if (lockError) lockError.textContent = 'VERIFYING...';
@@ -431,7 +498,111 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     /* =========================================================
-       4. 彩色分类标签、搜索与时间线真实比例瀑布流 (Timeline + Masonry)
+       4. 仿 iPhone 相册缩略图尺寸调节器 (Thumbnail Zoom Scaler)
+          - 桌面端 1..5 档 -> [7, 5, 4, 3, 2] 列
+          - 手机端 1..4 档 -> [5, 3, 2, 1] 列 (支持底部 -/+ 按钮与双指捏合缩放)
+          - 密集小图档位自动开启 .zoom-dense 隐藏底部标题，宛如 iOS 相册日/月视图
+    ========================================================= */
+    const DESKTOP_COLS_MAP = { 1: 7, 2: 5, 3: 4, 4: 3, 5: 2 };
+    const MOBILE_COLS_MAP = { 1: 5, 2: 3, 3: 2, 4: 1 };
+
+    const zoomSlider = document.getElementById('zoom-slider');
+    const btnZoomOut = document.getElementById('btn-zoom-out');
+    const btnZoomIn = document.getElementById('btn-zoom-in');
+    const mobZoomOut = document.getElementById('mob-zoom-out');
+    const mobZoomIn = document.getElementById('mob-zoom-in');
+    const mobZoomLabel = document.getElementById('mob-zoom-label');
+
+    function isMobileViewport() {
+        return window.innerWidth <= 820;
+    }
+
+    function getColumnCount() {
+        if (isMobileViewport()) {
+            return MOBILE_COLS_MAP[mobileZoomLevel] || 2;
+        }
+        return DESKTOP_COLS_MAP[desktopZoomLevel] || 4;
+    }
+
+    function syncZoomUI() {
+        const cols = getColumnCount();
+        const mobile = isMobileViewport();
+
+        if (zoomSlider) {
+            zoomSlider.value = String(desktopZoomLevel);
+        }
+        if (mobZoomLabel) {
+            mobZoomLabel.textContent = `${cols}列`;
+        }
+
+        // 当列数较多（手机 >= 3 列，桌面 >= 5 列）时开启仿 iPhone 相册紧凑无字模式
+        const isDense = mobile ? cols >= 3 : cols >= 5;
+        document.body.classList.toggle('zoom-dense', isDense);
+    }
+
+    function applyZoomChange(newLevel, isMobile) {
+        if (isMobile) {
+            mobileZoomLevel = Math.min(4, Math.max(1, newLevel));
+            localStorage.setItem(STORAGE_KEYS.ZOOM_MOBILE, String(mobileZoomLevel));
+        } else {
+            desktopZoomLevel = Math.min(5, Math.max(1, newLevel));
+            localStorage.setItem(STORAGE_KEYS.ZOOM_DESKTOP, String(desktopZoomLevel));
+        }
+        syncZoomUI();
+        renderSpace();
+    }
+
+    zoomSlider?.addEventListener('input', (e) => {
+        applyZoomChange(parseInt(e.target.value, 10), false);
+    });
+    btnZoomOut?.addEventListener('click', () => {
+        applyZoomChange(desktopZoomLevel - 1, false);
+    });
+    btnZoomIn?.addEventListener('click', () => {
+        applyZoomChange(desktopZoomLevel + 1, false);
+    });
+    mobZoomOut?.addEventListener('click', () => {
+        applyZoomChange(mobileZoomLevel - 1, true);
+    });
+    mobZoomIn?.addEventListener('click', () => {
+        applyZoomChange(mobileZoomLevel + 1, true);
+    });
+
+    // 移动端画布支持仿 iPhone 相册双指捏合缩放 (Pinch-to-Zoom Grid)
+    let pinchStartDist = 0;
+    let pinchTriggered = false;
+    const spaceMainEl = document.getElementById('space-main');
+
+    spaceMainEl?.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            pinchStartDist = Math.hypot(dx, dy);
+            pinchTriggered = false;
+        }
+    }, { passive: true });
+
+    spaceMainEl?.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2 && pinchStartDist > 0 && !pinchTriggered) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.hypot(dx, dy);
+            const delta = dist - pinchStartDist;
+            if (Math.abs(delta) > 42) {
+                pinchTriggered = true;
+                if (delta > 0) {
+                    // 双指张开 -> 放大缩略图
+                    applyZoomChange(mobileZoomLevel + 1, true);
+                } else {
+                    // 双指捏合 -> 缩小缩略图（更多列）
+                    applyZoomChange(mobileZoomLevel - 1, true);
+                }
+            }
+        }
+    }, { passive: true });
+
+    /* =========================================================
+       5. 彩色分类标签、搜索与时间线真实比例瀑布流 (Timeline + Masonry)
     ========================================================= */
     const folderTabsEl = document.getElementById('folder-tabs');
     const batchMoveSelect = document.getElementById('batch-move-select');
@@ -439,14 +610,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const emptyStageEl = document.getElementById('empty-stage');
     const storageStat = document.getElementById('storage-stat');
     const dropTargetHint = document.getElementById('drop-target-hint');
-
-    function getColumnCount() {
-        const w = window.innerWidth;
-        if (w <= 640) return 2;
-        if (w <= 960) return 2;
-        if (w <= 1400) return 3;
-        return 4;
-    }
 
     function renderFolders() {
         if (!folderTabsEl) return;
@@ -536,6 +699,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderSpace() {
         if (!isUnlocked) return;
+        syncZoomUI();
         updateStorageQuotaUI();
         renderFolders();
 
@@ -720,9 +884,10 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     /* =========================================================
-       5. 批量管理工具 (Batch Management Suite)
+       6. 批量管理工具 (Batch Management Suite)
     ========================================================= */
     const btnBatchToggle = document.getElementById('btn-batch-toggle');
+    const mobBtnBatch = document.getElementById('mob-btn-batch');
     const selectionDock = document.getElementById('selection-dock');
     const selCountEl = document.getElementById('sel-count');
 
@@ -740,6 +905,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const active = isBatchMode || count > 0;
         document.body.classList.toggle('batch-active', active);
         btnBatchToggle?.classList.toggle('active', active);
+        mobBtnBatch?.classList.toggle('active', active);
+        if (mobBtnBatch) mobBtnBatch.textContent = active ? '完成' : '多选';
         if (selectionDock) selectionDock.hidden = !active;
         if (selCountEl) selCountEl.textContent = `${count} SELECTED`;
     }
@@ -758,7 +925,7 @@ document.addEventListener("DOMContentLoaded", () => {
         renderSpace();
     }
 
-    btnBatchToggle?.addEventListener('click', () => {
+    function handleToggleBatchMode() {
         if (isBatchMode || selectedKeys.size > 0) {
             clearBatchMode();
         } else {
@@ -766,7 +933,10 @@ document.addEventListener("DOMContentLoaded", () => {
             syncBatchUI();
             toast('BATCH MODE · 点击任意图片即可多选');
         }
-    });
+    }
+
+    btnBatchToggle?.addEventListener('click', handleToggleBatchMode);
+    mobBtnBatch?.addEventListener('click', handleToggleBatchMode);
 
     document.getElementById('btn-sel-all')?.addEventListener('click', () => {
         const allSelected = filteredImages.every(i => selectedKeys.has(i.key));
@@ -897,7 +1067,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     /* =========================================================
-       6. 极速双层上传引擎 (自动生成 1080px WebP 预览图 + 原图并发入库)
+       7. 极速双层上传引擎 (自动生成 1080px WebP 预览图 + 原图并发入库)
     ========================================================= */
     const fileInput = document.getElementById('file-input');
     const dropOverlay = document.getElementById('drop-overlay');
@@ -907,6 +1077,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const ribbonPercent = document.getElementById('ribbon-percent');
 
     document.getElementById('btn-upload')?.addEventListener('click', () => fileInput?.click());
+    document.getElementById('mob-btn-upload')?.addEventListener('click', () => fileInput?.click());
     document.getElementById('empty-drop-trigger')?.addEventListener('click', () => fileInput?.click());
 
     fileInput?.addEventListener('change', (e) => {
@@ -1124,14 +1295,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     /* =========================================================
-       7. 零卡顿极速详情检视层 (Zero-Jank Instant Viewer)
-          为什么之前还会卡？
-          1) 全屏 backdrop-filter 高斯模糊在 4K 屏幕上会阻塞合成线程
-          2) 自动后台拉取 10MB~20MB 原图并在主线程解码会造成瞬间掉帧
-          现在：点击卡片直接 100% 复用已经在显卡内存里的预览图（<16ms 零掉帧瞬开），
-          左上角提供 "LOAD ORIGINAL HD" 按钮供需要看 100% 原始大图时按需异步解码 (.decode())！
+       8. 零卡顿极速详情检视层 (Zero-Jank Instant Viewer + Mobile Touch Swipe)
     ========================================================= */
     const viewerModal = document.getElementById('viewer-modal');
+    const viewerStage = document.getElementById('viewer-stage');
     const viewerImg = document.getElementById('viewer-img');
     const btnLoadHd = document.getElementById('btn-load-hd');
     const metaTitleInput = document.getElementById('meta-title-input');
@@ -1160,12 +1327,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const fastThumb = alreadyDecodedSrc || getFastThumbUrl(item);
         const formats = buildFormats(item);
 
-        // 直接赋值为已经在内存中的缩略图 URL，主线程 0 解码开销，瞬开无卡顿
         if (viewerImg) {
             viewerImg.src = fastThumb;
         }
 
-        // 如果原图与预览图不同，显示左上角按需加载原图按钮
         if (btnLoadHd) {
             if (fullUrl && fullUrl !== fastThumb) {
                 btnLoadHd.hidden = false;
@@ -1218,7 +1383,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // 按需使用脱离主线程的 img.decode() 异步解码高清原图，彻底杜绝界面卡死
     btnLoadHd?.addEventListener('click', async () => {
         const item = filteredImages[activeViewerIdx];
         if (!item) return;
@@ -1297,25 +1461,58 @@ document.addEventListener("DOMContentLoaded", () => {
         if (ok) closeViewer();
     });
 
-    document.getElementById('viewer-prev')?.addEventListener('click', (e) => {
-        e.stopPropagation();
+    function showPrevViewerImage() {
         if (filteredImages.length === 0) return;
         activeViewerIdx = (activeViewerIdx - 1 + filteredImages.length) % filteredImages.length;
         populateViewer();
-    });
-    document.getElementById('viewer-next')?.addEventListener('click', (e) => {
-        e.stopPropagation();
+    }
+
+    function showNextViewerImage() {
         if (filteredImages.length === 0) return;
         activeViewerIdx = (activeViewerIdx + 1) % filteredImages.length;
         populateViewer();
+    }
+
+    document.getElementById('viewer-prev')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showPrevViewerImage();
+    });
+    document.getElementById('viewer-next')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showNextViewerImage();
     });
     document.getElementById('viewer-close')?.addEventListener('click', closeViewer);
-    document.getElementById('viewer-stage')?.addEventListener('click', (e) => {
+    document.getElementById('mobile-viewer-close')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeViewer();
+    });
+    viewerStage?.addEventListener('click', (e) => {
         if (e.target.id === 'viewer-stage') closeViewer();
     });
 
+    // 移动端看图区左右滑动手势切换上下张
+    let swipeStartX = 0;
+    let swipeStartY = 0;
+    viewerStage?.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            swipeStartX = e.touches[0].clientX;
+            swipeStartY = e.touches[0].clientY;
+        }
+    }, { passive: true });
+
+    viewerStage?.addEventListener('touchend', (e) => {
+        if (!swipeStartX || e.changedTouches.length !== 1) return;
+        const dx = e.changedTouches[0].clientX - swipeStartX;
+        const dy = e.changedTouches[0].clientY - swipeStartY;
+        swipeStartX = 0;
+        if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+            if (dx > 0) showPrevViewerImage();
+            else showNextViewerImage();
+        }
+    }, { passive: true });
+
     /* =========================================================
-       8. 空间设置与一键锁屏弹窗
+       9. 空间设置与一键锁屏弹窗
     ========================================================= */
     const settingsModal = document.getElementById('settings-modal');
     const selectUploadMode = document.getElementById('select-upload-mode');
@@ -1364,12 +1561,15 @@ document.addEventListener("DOMContentLoaded", () => {
             else if (settingsModal?.classList.contains('open')) closeSettings();
             else if (isBatchMode || selectedKeys.size > 0) clearBatchMode();
         } else if (activeViewerIdx >= 0) {
-            if (e.key === 'ArrowLeft') document.getElementById('viewer-prev')?.click();
-            if (e.key === 'ArrowRight') document.getElementById('viewer-next')?.click();
+            if (e.key === 'ArrowLeft') showPrevViewerImage();
+            if (e.key === 'ArrowRight') showNextViewerImage();
         } else if (e.key === 'b' || e.key === 'B') {
-            btnBatchToggle?.click();
+            handleToggleBatchMode();
         }
     });
+
+    syncZoomUI();
+    probeServerStatus();
 
     if (adminToken) {
         tryUnlockAndLoad(adminToken, true);

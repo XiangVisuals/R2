@@ -245,6 +245,14 @@ button {
 }
 
 /* 彩色圆点分类标签栏 */
+.folder-nav-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex: 1;
+}
+
 .folder-tabs {
     display: flex;
     align-items: center;
@@ -333,12 +341,70 @@ button {
     color: var(--text);
 }
 
-/* 右侧工具区 + R2 容量条 */
+/* 右侧工具区 + 缩略图缩放器 + R2 容量条 */
 .bar-right {
     display: flex;
     align-items: center;
     gap: 12px;
     flex-shrink: 0;
+}
+
+/* 仿 iPhone 相册缩略图尺寸调节器 */
+.zoom-scaler {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    background: var(--bg-soft);
+}
+
+.zoom-step-btn {
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1;
+    color: var(--text-sub);
+    transition: color 0.15s, transform 0.15s;
+}
+.zoom-step-btn:hover {
+    color: var(--text);
+    transform: scale(1.15);
+}
+
+.zoom-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 68px;
+    height: 2px;
+    background: var(--line);
+    outline: none;
+    cursor: pointer;
+}
+.zoom-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text);
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+.zoom-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.25);
+}
+.zoom-slider::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    border: none;
+    border-radius: 50%;
+    background: var(--text);
+    cursor: pointer;
 }
 
 .quota-pill {
@@ -767,6 +833,38 @@ body.batch-active .thumb-check {
     flex-shrink: 0;
 }
 
+/* 仿 iPhone 相册缩放：密集缩略图档位自动收紧间距并隐藏底部文字 */
+body.zoom-dense .masonry-board {
+    gap: 10px;
+}
+body.zoom-dense .masonry-column {
+    gap: 10px;
+}
+body.zoom-dense .photo-caption {
+    display: none;
+}
+body.zoom-dense .thumb-copy-btn {
+    padding: 3px 6px;
+    font-size: 8px;
+    right: 6px;
+    bottom: 6px;
+}
+body.zoom-dense .thumb-check {
+    top: 6px;
+    left: 6px;
+    width: 18px;
+    height: 18px;
+    font-size: 9px;
+}
+
+/* 桌面端默认隐藏移动端专属底部导航与关闭按钮 */
+.mobile-bottom-bar {
+    display: none;
+}
+.mobile-viewer-close {
+    display: none;
+}
+
 /* =========================================================
    4. 底部悬浮批量管理控制台 (Selection Dock)
 ========================================================= */
@@ -890,6 +988,7 @@ body.batch-active .thumb-check {
     padding: 32px;
     background: var(--bg-soft);
     overflow: hidden;
+    touch-action: pan-y pinch-zoom;
 }
 
 .hd-badge-btn {
@@ -921,6 +1020,8 @@ body.batch-active .thumb-check {
     width: auto;
     height: auto;
     object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
 }
 
 .nav-arrow {
@@ -935,6 +1036,7 @@ body.batch-active .thumb-check {
     display: flex;
     align-items: center;
     justify-content: center;
+    z-index: 4;
 }
 .nav-arrow:hover {
     color: var(--text);
@@ -1165,6 +1267,8 @@ body.batch-active .thumb-check {
     flex-direction: column;
     gap: 18px;
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
+    max-height: 90vh;
+    overflow-y: auto;
 }
 .settings-head {
     display: flex;
@@ -1251,6 +1355,7 @@ body.batch-active .thumb-check {
     padding: 8px 10px;
     background: var(--bg-soft);
     border: 1px solid var(--line);
+    line-height: 1.5;
 }
 .settings-foot {
     display: grid;
@@ -1324,62 +1429,314 @@ body.batch-active .thumb-check {
 }
 
 /* =========================================================
-   7. 响应式多列与移动端适配
+   7. 移动端专属深度优化 (Dedicated Mobile Experience <= 820px)
+   - 顶部紧凑双排吸顶栏 (第一排品牌+搜索+状态；第二排横向滑动彩色分类胶囊)
+   - 底部悬浮 iOS 相册风拇指操作栏 (缩略图列数缩放 -/+、上传、多选、空间)
+   - 全屏沉浸式滑动看图 + 底部抽屉式详情
 ========================================================= */
-@media (max-width: 1400px) {
-    .masonry-board {
-        grid-template-columns: repeat(3, 1fr);
-    }
-}
-
-@media (max-width: 960px) {
-    .masonry-board {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 18px;
-    }
-    .masonry-column {
-        gap: 20px;
-    }
-}
-
 @media (max-width: 820px) {
     .top-bar {
         height: auto;
-        padding: 12px 5vw;
-        flex-wrap: wrap;
-        gap: 10px;
+        padding: 10px 4vw 8px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
     }
+
     .bar-left {
         width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .brand {
+        justify-content: flex-start;
+    }
+
+    /* 手机端顶栏隐藏已移入底部拇指栏的按钮 */
+    .zoom-scaler,
+    .quota-pill,
+    #btn-batch-toggle,
+    #btn-upload {
+        display: none !important;
+    }
+
+    /* 将搜索框与设置图标固定在第一排右侧，与品牌同行 */
+    .bar-right {
+        position: absolute;
+        top: 10px;
+        right: 4vw;
+        gap: 8px;
+    }
+
+    .search-input {
+        width: 115px;
+        font-size: 11px;
+        padding: 4px 6px;
+        background: var(--bg-soft);
+        border: 1px solid var(--line);
+    }
+    .search-input:focus {
+        width: 145px;
+        border-color: var(--text);
+        background: var(--bg);
+    }
+
+    .folder-nav-wrap {
+        width: 100%;
+        padding-top: 2px;
+        border-top: 1px solid var(--line);
         justify-content: space-between;
+    }
+
+    .folder-tabs {
+        gap: 14px;
+        padding: 2px 0;
+    }
+
+    .tab-item {
+        font-size: 10.5px;
+        padding: 5px 2px;
+    }
+
+    .upload-ribbon {
+        top: 76px;
+    }
+
+    /* 主画布预留底部悬浮栏安全间距 */
+    .space-main {
+        padding: 18px 3.5vw calc(96px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .timeline-stream {
+        gap: 28px;
+    }
+
+    .timeline-section {
         gap: 12px;
     }
-    .bar-right {
-        width: 100%;
-        justify-content: space-between;
-        flex-wrap: wrap;
+
+    .timeline-header {
+        padding-bottom: 8px;
     }
-    .quota-pill {
+
+    .timeline-date-title {
+        font-size: 11px;
+        letter-spacing: 1px;
+    }
+
+    .timeline-date-sub {
+        font-size: 9px;
+        letter-spacing: 0.5px;
+    }
+
+    .masonry-board {
+        gap: 10px;
+    }
+
+    .masonry-column {
+        gap: 12px;
+    }
+
+    body.zoom-dense .masonry-board {
+        gap: 4px;
+    }
+    body.zoom-dense .masonry-column {
+        gap: 4px;
+    }
+
+    /* 手机端默认只显示图片，多列时自动隐藏冗长文件名保持像 iPhone 相册一样干净 */
+    .photo-caption {
+        font-size: 9px;
+    }
+    .caption-info {
         display: none;
     }
-    .search-input,
-    .search-input:focus {
-        width: 120px;
-    }
+
     .thumb-copy-btn {
         opacity: 1;
+        padding: 3px 7px;
+        font-size: 8px;
+        right: 6px;
+        bottom: 6px;
     }
+
+    .thumb-check {
+        top: 6px;
+        left: 6px;
+        width: 20px;
+        height: 20px;
+    }
+
+    /* 移动端专属底部悬浮操作栏 (iOS 相册风格) */
+    .mobile-bottom-bar {
+        position: fixed;
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        left: 3.5vw;
+        right: 3.5vw;
+        z-index: 85;
+        height: 50px;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid var(--text);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 10px;
+        gap: 8px;
+    }
+
+    .mob-zoom-group {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--line);
+        background: var(--bg-soft);
+        height: 32px;
+    }
+
+    .mob-zoom-btn {
+        width: 28px;
+        height: 100%;
+        font-family: var(--font-mono);
+        font-size: 14px;
+        color: var(--text);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .mob-zoom-btn:active {
+        background: var(--line);
+    }
+
+    .mob-zoom-label {
+        font-family: var(--font-mono);
+        font-size: 9.5px;
+        letter-spacing: 0.5px;
+        padding: 0 6px;
+        color: var(--text-sub);
+        min-width: 34px;
+        text-align: center;
+    }
+
+    .mob-upload-fab {
+        flex: 1;
+        height: 32px;
+        background: var(--text);
+        color: var(--bg);
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 1.5px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .mob-right-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .mob-tool-btn {
+        height: 32px;
+        padding: 0 9px;
+        border: 1px solid var(--line);
+        background: var(--bg-soft);
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--text);
+    }
+    .mob-tool-btn.active {
+        background: var(--text);
+        color: var(--bg);
+        border-color: var(--text);
+    }
+
+    /* 手机端批量选择栏悬浮在底部工具栏正上方 */
+    .selection-dock {
+        bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+        left: 3.5vw;
+        right: 3.5vw;
+        transform: none;
+        max-width: none;
+        padding: 10px 12px;
+        gap: 8px;
+        justify-content: space-between;
+    }
+
+    /* 手机端详情检视器：上方沉浸看图 + 右上角悬浮关闭 + 下方抽屉详情 */
+    .viewer-backdrop {
+        overflow-y: auto;
+    }
+
     .viewer-layout {
         grid-template-columns: 1fr;
+        grid-template-rows: 54vh auto;
         height: auto;
         min-height: 100vh;
     }
+
     .viewer-stage {
-        min-height: 52vh;
-        padding: 20px;
+        height: 54vh;
+        padding: 16px 12px;
+        background: #0f0f10;
     }
+
+    .viewer-img {
+        max-height: 48vh;
+    }
+
+    .hd-badge-btn {
+        top: 14px;
+        left: 14px;
+        background: rgba(20, 20, 22, 0.85);
+        color: #fff;
+        border-color: rgba(255, 255, 255, 0.25);
+    }
+
+    .mobile-viewer-close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: absolute;
+        top: 12px;
+        right: 14px;
+        width: 34px;
+        height: 34px;
+        background: rgba(20, 20, 22, 0.8);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        font-size: 14px;
+        z-index: 6;
+    }
+
+    .nav-arrow {
+        color: rgba(255, 255, 255, 0.75);
+        width: 38px;
+        height: 38px;
+        background: rgba(0, 0, 0, 0.35);
+    }
+    .nav-arrow.prev { left: 8px; }
+    .nav-arrow.next { right: 8px; }
+
     .viewer-sidebar {
         border-left: none;
         border-top: 1px solid var(--line);
+        padding: 20px 5vw calc(32px + env(safe-area-inset-bottom, 0px));
+        gap: 18px;
+    }
+
+    .viewer-sidebar .viewer-close {
+        display: none;
+    }
+
+    .toast-box {
+        bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+        right: 4vw;
+        left: 4vw;
+        align-items: center;
     }
 }
+

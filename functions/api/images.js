@@ -1,11 +1,6 @@
 /**
- * XIANG SPACE — Cloudflare Pages Function (/api/images)
- *
- * Methods:
- * - GET: List images in R2 (or ?action=verify to verify admin password)
- * - POST: Upload single or multiple images with optional client-generated thumbnail
- * - PATCH: Batch or single update of folder (category) & title metadata
- * - DELETE: Batch or single delete of images (plus their thumbnails & edge cache)
+ * XIANG SPACE — Cloudflare API Endpoint (/api/images)
+ * Strict Authentication & R2 Binding Diagnostics
  */
 
 const CORS_HEADERS = {
@@ -19,6 +14,7 @@ function jsonResponse(data, status = 200) {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store, no-cache, must-revalidate",
       ...CORS_HEADERS,
     },
   });
@@ -32,20 +28,57 @@ function getTokenFromRequest(request) {
   return (request.headers.get("X-Admin-Token") || "").trim();
 }
 
+/**
+ * Smartly resolve R2 Bucket and Admin Password from env,
+ * supporting both standard names (BUCKET, ADMIN_PASSWORD) and case/common variations.
+ */
+function resolveEnvBindings(env) {
+  // 1. Find R2 Bucket binding (checks env.BUCKET first, then scans any binding with R2 methods)
+  let bucket = env.BUCKET || env.R2 || env.r2 || env.bucket || null;
+  let bucketBindingName = bucket ? "BUCKET" : null;
+
+  if (!bucket && env && typeof env === "object") {
+    for (const [k, v] of Object.entries(env)) {
+      if (
+        v &&
+        typeof v === "object" &&
+        typeof v.list === "function" &&
+        typeof v.put === "function" &&
+        typeof v.get === "function"
+      ) {
+        bucket = v;
+        bucketBindingName = k;
+        break;
+      }
+    }
+  }
+
+  // 2. Find Admin Password binding
+  const passwordRaw =
+    env.ADMIN_PASSWORD ??
+    env.admin_password ??
+    env.PASSWORD ??
+    env.password ??
+    "";
+  const adminPassword = String(passwordRaw).trim();
+
+  return { bucket, bucketBindingName, adminPassword };
+}
+
 function verifyAdmin(request, env) {
-  const configuredPassword = env.ADMIN_PASSWORD;
-  if (!configuredPassword) {
+  const { adminPassword } = resolveEnvBindings(env);
+  if (!adminPassword) {
     return {
       authorized: false,
-      reason: "服务器端尚未配置 ADMIN_PASSWORD 环境变量，请在 Cloudflare Pages -> Settings -> Environment variables 中设置。",
+      reason: "Cloudflare 后台尚未检测到 ADMIN_PASSWORD 变量（添加后需重新 Deploy 一次生效）",
       misconfigured: true,
     };
   }
   const token = getTokenFromRequest(request);
-  if (!token || token !== configuredPassword) {
+  if (!token || token !== adminPassword) {
     return {
       authorized: false,
-      reason: "访问密钥不正确 (INVALID PASSWORD)",
+      reason: "密码错误，请重新输入 (INVALID PASSWORD)",
       misconfigured: false,
     };
   }
@@ -105,44 +138,45 @@ export async function onRequestOptions() {
 export async function onRequestGet(context) {
   const { request, env } = context;
   const url = new URL(request.url);
-  const action = url.searchParams.get("action");
+  const { bucket, bucketBindingName, adminPassword } = resolveEnvBindings(env);
 
-  const hasR2 = Boolean(env.BUCKET);
-  const hasPassword = Boolean(env.ADMIN_PASSWORD);
+  const hasR2 = Boolean(bucket);
+  const hasPassword = Boolean(adminPassword);
 
-  if (action === "verify") {
-    const auth = verifyAdmin(request, env);
+  // Status probe without unlocking
+  if (url.searchParams.get("action") === "status") {
     return jsonResponse({
-      ok: auth.authorized,
+      ok: true,
       r2Bound: hasR2,
+      bucketBindingName,
       passwordConfigured: hasPassword,
-      publicDomain: env.PUBLIC_R2_DOMAIN || new URL(request.url).origin + "/raw",
-      message: auth.authorized ? "VERIFIED" : auth.reason,
-    }, auth.authorized ? 200 : 401);
+    });
   }
 
+  // 1. ALWAYS verify password first when ADMIN_PASSWORD is set
+  const auth = verifyAdmin(request, env);
+  if (!auth.authorized) {
+    return jsonResponse({
+      ok: false,
+      r2Bound: hasR2,
+      passwordConfigured: hasPassword,
+      locked: true,
+      misconfigured: auth.misconfigured,
+      message: auth.reason,
+    }, 401);
+  }
+
+  // 2. Check R2 Bucket binding
   if (!hasR2) {
     return jsonResponse({
       ok: false,
       r2Bound: false,
       passwordConfigured: hasPassword,
+      isAdmin: true,
       items: [],
       folders: [],
-      message: "未检测到 R2 存储桶绑定 (BUCKET)。",
+      message: "密码验证通过，但尚未检测到 R2 存储桶绑定（请在 Bindings 中绑定 BUCKET 后重新部署一次）。",
     }, 200);
-  }
-
-  const auth = verifyAdmin(request, env);
-  if (hasPassword && !auth.authorized) {
-    return jsonResponse({
-      ok: false,
-      r2Bound: true,
-      passwordConfigured: true,
-      isAdmin: false,
-      locked: true,
-      items: [],
-      message: auth.reason,
-    }, 401);
   }
 
   try {
@@ -150,7 +184,7 @@ export async function onRequestGet(context) {
     const cursor = url.searchParams.get("cursor") || undefined;
     const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get("limit")) || 800));
 
-    const listed = await env.BUCKET.list({
+    const listed = await bucket.list({
       prefix,
       cursor,
       limit,
@@ -171,7 +205,7 @@ export async function onRequestGet(context) {
       ok: true,
       r2Bound: true,
       passwordConfigured: hasPassword,
-      isAdmin: auth.authorized,
+      isAdmin: true,
       publicDomain: env.PUBLIC_R2_DOMAIN || new URL(request.url).origin + "/raw",
       items,
       folders: Array.from(folderSet),
@@ -195,10 +229,11 @@ export async function onRequestPost(context) {
     return jsonResponse({ ok: false, error: auth.reason }, 401);
   }
 
-  if (!env.BUCKET) {
+  const { bucket } = resolveEnvBindings(env);
+  if (!bucket) {
     return jsonResponse({
       ok: false,
-      error: "R2 存储桶 (BUCKET) 未绑定，请在 Cloudflare Pages -> Settings -> Functions -> R2 bucket bindings 中添加变量名 BUCKET。",
+      error: "R2 存储桶 (BUCKET) 未绑定，请在 Cloudflare 设置中绑定后重新部署一次。",
     }, 503);
   }
 
@@ -245,11 +280,10 @@ export async function onRequestPost(context) {
     const key = `${rawFolder}/${baseName}.${ext}`;
     let thumbKey = "";
 
-    // If client provided a lightweight WebP thumbnail, store it under .thumbs/ for instant loading
     if (thumbFile && typeof thumbFile !== "string") {
       thumbKey = `.thumbs/${rawFolder}/${baseName}.webp`;
       const thumbBuf = await thumbFile.arrayBuffer();
-      await env.BUCKET.put(thumbKey, thumbBuf, {
+      await bucket.put(thumbKey, thumbBuf, {
         httpMetadata: {
           contentType: "image/webp",
           cacheControl: "public, max-age=31536000, immutable",
@@ -276,7 +310,7 @@ export async function onRequestPost(context) {
 
     const arrayBuffer = await file.arrayBuffer();
 
-    const putResult = await env.BUCKET.put(key, arrayBuffer, {
+    const putResult = await bucket.put(key, arrayBuffer, {
       httpMetadata: {
         contentType: mimeType,
         cacheControl: "public, max-age=31536000, immutable",
@@ -306,10 +340,6 @@ export async function onRequestPost(context) {
   }
 }
 
-/**
- * PATCH /api/images
- * Supports single { key, title, folder } OR batch { keys: [...], folder }
- */
 export async function onRequestPatch(context) {
   const { request, env } = context;
 
@@ -318,7 +348,8 @@ export async function onRequestPatch(context) {
     return jsonResponse({ ok: false, error: auth.reason }, 401);
   }
 
-  if (!env.BUCKET) {
+  const { bucket } = resolveEnvBindings(env);
+  if (!bucket) {
     return jsonResponse({ ok: false, error: "R2 Bucket not bound" }, 503);
   }
 
@@ -334,7 +365,7 @@ export async function onRequestPatch(context) {
     const updatedItems = [];
 
     for (const k of keys) {
-      const existing = await env.BUCKET.get(k);
+      const existing = await bucket.get(k);
       if (!existing) continue;
 
       const updatedMeta = {
@@ -343,7 +374,7 @@ export async function onRequestPatch(context) {
       if (typeof title === "string") updatedMeta.title = title.slice(0, 120);
       if (typeof folder === "string" && folder.trim()) updatedMeta.folder = folder.trim();
 
-      await env.BUCKET.put(k, existing.body, {
+      await bucket.put(k, existing.body, {
         httpMetadata: existing.httpMetadata,
         customMetadata: updatedMeta,
       });
@@ -378,7 +409,8 @@ export async function onRequestDelete(context) {
     return jsonResponse({ ok: false, error: auth.reason }, 401);
   }
 
-  if (!env.BUCKET) {
+  const { bucket } = resolveEnvBindings(env);
+  if (!bucket) {
     return jsonResponse({ ok: false, error: "R2 Bucket not bound" }, 503);
   }
 
@@ -402,14 +434,13 @@ export async function onRequestDelete(context) {
       return jsonResponse({ ok: false, error: "未指定要删除的文件 Key" }, 400);
     }
 
-    // Also delete associated .thumbs/ objects
     const allDeleteTargets = [...keysToDelete];
     for (const k of keysToDelete) {
       const baseNoExt = k.replace(/\.[^/.]+$/, "");
       allDeleteTargets.push(`.thumbs/${baseNoExt}.webp`);
     }
 
-    await env.BUCKET.delete(allDeleteTargets);
+    await bucket.delete(allDeleteTargets);
 
     const cache = caches.default;
     const origin = new URL(request.url).origin;
