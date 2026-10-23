@@ -15,7 +15,6 @@
 
     <!-- =========================================================
          0. 首屏密码门禁 (Minimalist Password Lock Screen)
-         打开页面即优雅呈现，输入正确密码后如画廊幕布般丝滑揭开
     ========================================================= -->
     <div id="lock-screen" class="lock-screen">
         <div class="lock-box">
@@ -50,7 +49,7 @@
     </div>
 
     <!-- =========================================================
-         1. 极简顶栏：品牌标识 + 彩色分类标签 + 搜索 + 批量管理 + 上传
+         1. 极简顶栏：品牌标识 + 彩色分类标签 + 容量仪表 + 搜索 + 批量 + 上传
     ========================================================= -->
     <header class="top-bar" id="top-bar">
         <div class="bar-left">
@@ -67,11 +66,21 @@
         </div>
 
         <div class="bar-right">
+            <!-- R2 10GB 免费存储空间实时仪表 (点击可打开详细空间分布卡片) -->
+            <button type="button" class="quota-pill" id="btn-quota-detail" title="点击查看 Cloudflare R2 可用空间详情 (免费额度 10 GB)">
+                <div class="quota-text-row">
+                    <span class="quota-used" id="quota-pill-text">0 MB / 10 GB</span>
+                </div>
+                <div class="quota-mini-track">
+                    <div class="quota-mini-fill" id="quota-mini-fill"></div>
+                </div>
+            </button>
+
             <div class="search-wrap">
                 <input type="text" id="search-input" class="search-input" placeholder="Search..." autocomplete="off">
             </div>
 
-            <button class="ghost-btn" id="btn-batch-toggle" title="开启/退出批量选择管理 (B)">
+            <button class="ghost-btn" id="btn-batch-toggle" title="开启/退出批量选择管理 (快捷键 B)">
                 <span>SELECT 批量</span>
             </button>
 
@@ -79,7 +88,7 @@
                 <span>+ UPLOAD</span>
             </button>
 
-            <button class="icon-btn" id="btn-settings" title="空间设置与锁屏" aria-label="Settings">
+            <button class="icon-btn" id="btn-settings" title="空间设置与存储统计" aria-label="Settings">
                 <span class="status-dot online" id="auth-dot"></span>
             </button>
         </div>
@@ -97,7 +106,7 @@
     </div>
 
     <!-- =========================================================
-         2. 主画布：真实宽高比无裁切瀑布流 (True Aspect Ratio Masonry)
+         2. 主画布：按时间线归档的真实宽高比无裁切画廊 (Timeline Archive)
     ========================================================= -->
     <main class="space-main" id="space-main">
         <!-- 空状态 -->
@@ -105,16 +114,16 @@
             <div class="empty-box" id="empty-drop-trigger">
                 <span class="empty-plus">+</span>
                 <p class="empty-title">拖拽图片至此，或按 ⌘V 粘贴上传</p>
-                <span class="empty-sub">支持 JPG · PNG · WebP · GIF · SVG 真实比例无损归档</span>
+                <span class="empty-sub">支持 JPG · PNG · WebP · GIF · SVG 真实比例时间线归档</span>
             </div>
         </div>
 
-        <!-- 真实比例多列瀑布流容器 -->
-        <div class="masonry-board" id="masonry-board"></div>
+        <!-- 时间线分组流容器 -->
+        <div class="timeline-stream" id="timeline-stream"></div>
     </main>
 
     <!-- =========================================================
-         3. 底部悬浮批量管理控制台 (支持全选/反选、批量移动分类、批量复制、批量下载、批量删除)
+         3. 底部悬浮批量管理控制台
     ========================================================= -->
     <div class="selection-dock" id="selection-dock" hidden>
         <div class="dock-left">
@@ -126,7 +135,6 @@
         <span class="sel-sep"></span>
 
         <div class="dock-center">
-            <!-- 批量移动到分类 -->
             <div class="dock-move-group">
                 <select id="batch-move-select" class="dock-select" title="将选中图片批量移动到分类">
                     <option value="">MOVE TO 移动至...</option>
@@ -143,14 +151,14 @@
     </div>
 
     <!-- =========================================================
-         4. 零延迟渐进式详情检视层 (Instant Progressive Viewer)
-         先瞬間展示已缓存缩略图，后台静默加载高清原图无缝替换，彻底告别卡顿
+         4. 零卡顿极速详情检视层 (Zero-Jank Instant Viewer)
+         移除耗时高斯模糊与大阴影，默认展示已解码缩略图，可按需一键加载超清原图
     ========================================================= -->
     <div class="viewer-backdrop" id="viewer-modal" aria-hidden="true">
         <div class="viewer-layout">
             <!-- 左侧：纯净大图预览区 -->
             <div class="viewer-stage" id="viewer-stage">
-                <div class="hd-loading-pill" id="hd-loading-pill" hidden>LOADING HD...</div>
+                <button type="button" class="hd-badge-btn" id="btn-load-hd" hidden title="点击加载原始未压缩大图">LOAD ORIGINAL HD</button>
                 <button class="nav-arrow prev" id="viewer-prev" aria-label="Previous">‹</button>
                 <img id="viewer-img" class="viewer-img" alt="">
                 <button class="nav-arrow next" id="viewer-next" aria-label="Next">›</button>
@@ -172,7 +180,7 @@
                         <span id="stat-date">—</span>
                     </div>
 
-                    <!-- 所在文件夹切换 (带分类色彩指示点) -->
+                    <!-- 所在文件夹切换 -->
                     <div class="meta-row-field">
                         <label class="field-label">CATEGORY FOLDER · 所属分类</label>
                         <div class="folder-edit-group">
@@ -215,13 +223,32 @@
     </div>
 
     <!-- =========================================================
-         5. 空间设置与锁屏弹窗
+         5. 空间设置与 R2 存储容量监控弹窗 (Storage Quota & Settings)
     ========================================================= -->
     <div class="settings-backdrop" id="settings-modal" aria-hidden="true">
         <div class="settings-card">
             <div class="settings-head">
-                <span class="settings-title">SPACE SETTINGS</span>
+                <span class="settings-title">STORAGE &amp; SPACE SETTINGS</span>
                 <button class="viewer-close" id="settings-close">✕</button>
+            </div>
+
+            <!-- R2 可用空间可视化面板 -->
+            <div class="storage-meter-box">
+                <div class="meter-header">
+                    <span class="meter-label">CLOUDFLARE R2 FREE TIER (10 GB)</span>
+                    <span class="meter-pct" id="meter-pct">0.0%</span>
+                </div>
+
+                <!-- 多彩分类占比进度条 -->
+                <div class="meter-bar-multi" id="meter-bar-multi"></div>
+
+                <div class="meter-stats-row">
+                    <span>已用 USED: <strong id="meter-used-val">0 MB</strong></span>
+                    <span>可用 FREE: <strong id="meter-free-val">10.00 GB</strong></span>
+                </div>
+
+                <!-- 各分类占用明细 -->
+                <div class="meter-cat-breakdown" id="meter-cat-breakdown"></div>
             </div>
 
             <div class="settings-status" id="r2-conn-status">R2 Status</div>
@@ -229,7 +256,7 @@
             <div class="settings-field">
                 <label class="field-label">UPLOAD OPTIMIZATION · 上传预处理</label>
                 <select id="select-upload-mode" class="minimal-input">
-                    <option value="original">保留原图无损上传 + 自动生成极速缩略图 (推荐)</option>
+                    <option value="original">保留原图无损上传 + 自动生成极速预览图 (推荐)</option>
                     <option value="webp-4k">自动转 WebP · 最大 4K (3840px)</option>
                     <option value="webp-2k">自动转 WebP · 最大 2.5K (2560px)</option>
                 </select>
