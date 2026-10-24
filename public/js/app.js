@@ -1,12 +1,16 @@
 /**
- * 向 · 私人影像馆 (v4.0 东方极简画廊 · 光学星环门禁 · 全功能分类工作台)
+ * IMG (v5.0 Frosted Glass Vision · 6-Layer Mainland China Acceleration Engine)
  *
  * 核心特性:
- * 1. 网站启动序幕动画 (#site-loader) + 光学星环充能密码锁 (#lock-screen)
- * 2. 全中文温润画廊视觉体系 + 双层悬浮毛玻璃导航架构
- * 3. 全功能分类管理工作台 (#category-modal)：支持新建分类、10色专属色板、改名、换色、删除归并、
- *    单张卡片气泡菜单一键换分类 (#quick-cat-popover)、以及拖拽照片/文件到顶部分类胶囊直接归档
- * 4. 国内直连秒开引擎：零海外阻塞 CDN + 24px 0ms 瞬时模糊图 LQIP + 720px 极速 WebP 缩略图后台自动回填
+ * 1. 极简 IMG 品牌与全套 VisionOS 悬浮毛玻璃光影美学 (无冗余文案、统一 14px/10px/7px 黄金圆角)
+ * 2. 中国大陆 6 重极速加载引擎:
+ *    - Service Worker 本地磁盘强缓存 (/sw.js) 二次打开 0ms
+ *    - LocalStorage 云端快照 SWR 瞬时渲染 (<20ms 首屏秒开，后台静默同步)
+ *    - 视口优先 3 并发智能加载队列 (IntersectionObserver 杜绝跨境多图并发 TCP 拥塞假死)
+ *    - 600px 极速 WebP 缩略图 (~15KB) + 24px 内联 LQIP 模糊占位 (0ms 瞬时成像)
+ *    - 针对历史未生成缩略图的大图支持后台自动回填 + 设置面板一键全量生成极速缩略图 + 全球 CDN WebP 代理兜底
+ * 3. 网站启动序幕动画 (#site-loader) + 光学星环充能密码锁 (#lock-screen)
+ * 4. 全功能分类管理 (#category-modal / #quick-cat-popover / 拖拽照片到顶部分类标签归档)
  */
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -14,11 +18,18 @@ document.addEventListener("DOMContentLoaded", () => {
         ADMIN_TOKEN: 'xiang_r2_token',
         CUSTOM_DOMAIN: 'xiang_r2_domain',
         UPLOAD_MODE: 'xiang_r2_upload_mode',
+        CHINA_CDN_MODE: 'xiang_r2_china_cdn_mode',
         LOCAL_ITEMS: 'xiang_r2_local_items',
+        CLOUD_SNAPSHOT: 'xiang_r2_cloud_snapshot_v5',
         ZOOM_DESKTOP: 'xiang_r2_zoom_desktop',
         ZOOM_MOBILE: 'xiang_r2_zoom_mobile',
         CATEGORIES: 'xiang_r2_categories_v2'
     };
+
+    // 注册 Service Worker 持久缓存静态资源与 /raw/ 图片直链，二次打开 0ms
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
 
     // Cloudflare R2 免费存储额度 = 10 GB
     const R2_FREE_QUOTA_BYTES = 10 * 1024 * 1024 * 1024;
@@ -32,6 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let adminToken = localStorage.getItem(STORAGE_KEYS.ADMIN_TOKEN) || '';
     let customDomain = localStorage.getItem(STORAGE_KEYS.CUSTOM_DOMAIN) || '';
     let uploadMode = localStorage.getItem(STORAGE_KEYS.UPLOAD_MODE) || 'original';
+    let chinaCdnMode = localStorage.getItem(STORAGE_KEYS.CHINA_CDN_MODE) || 'smart-queue';
 
     // 缩略图档位：桌面端 1..5 (对应 7, 5, 4, 3, 2 列)，手机端 1..4 (对应 5, 3, 2, 1 列)
     let desktopZoomLevel = Math.min(5, Math.max(1, parseInt(localStorage.getItem(STORAGE_KEYS.ZOOM_DESKTOP) || '3', 10)));
@@ -61,7 +73,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (text && siteLoaderText) siteLoaderText.textContent = text;
     }
 
-    function dismissSiteLoader(delayMs = 260) {
+    function dismissSiteLoader(delayMs = 180) {
         if (siteLoaderDismissed) return;
         siteLoaderDismissed = true;
         if (siteLoaderBar) siteLoaderBar.style.width = '100%';
@@ -70,10 +82,10 @@ document.addEventListener("DOMContentLoaded", () => {
         }, delayMs);
     }
 
-    updateSiteLoader(45, '正在校验云端节点与视觉索引...');
+    updateSiteLoader(45, 'LOADING');
 
     /* =========================================================
-       0-B. 画廊分类与莫兰迪色彩系统 (Category & Color System)
+       0-B. 画廊分类与色彩系统 (Category & Color System)
     ========================================================= */
     const DYNAMIC_PALETTE = [
         '#2563eb', // 宝石蓝
@@ -89,7 +101,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ];
 
     const PRESET_FOLDER_COLORS = {
-        all: '#111113',
+        all: '#0f172a',
         default: '#64748b',
         portfolio: '#2563eb',
         street: '#d97706',
@@ -100,8 +112,8 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     const PRESET_FOLDER_LABELS = {
-        all: '全部影像',
-        default: '默认归档'
+        all: '全部',
+        default: '默认'
     };
 
     // 存储用户自定义分类及其专属颜色: Map<folderName, { name, color }>
@@ -149,14 +161,14 @@ document.addEventListener("DOMContentLoaded", () => {
     loadLocalCategories();
 
     function formatFolderDisplayName(folderName) {
-        if (!folderName) return '默认归档';
+        if (!folderName) return '默认';
         if (PRESET_FOLDER_LABELS[folderName]) return PRESET_FOLDER_LABELS[folderName];
         return folderName;
     }
 
     function getCategoryColor(folderName) {
         const clean = (folderName || 'default').trim();
-        if (clean === 'all') return '#111113';
+        if (clean === 'all') return '#0f172a';
         const custom = categoryMetaMap.get(clean);
         if (custom && custom.color) return custom.color;
         const lower = clean.toLowerCase();
@@ -177,13 +189,33 @@ document.addEventListener("DOMContentLoaded", () => {
         return Array.from(set);
     }
 
+    // 本地云端快照缓存 (Stale-While-Revalidate 秒开核心)
+    function saveCloudSnapshot(items) {
+        try {
+            localStorage.setItem(STORAGE_KEYS.CLOUD_SNAPSHOT, JSON.stringify({
+                ts: Date.now(),
+                items: items.slice(0, 300)
+            }));
+        } catch {}
+    }
+
+    function loadCloudSnapshot() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.CLOUD_SNAPSHOT);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (parsed && Array.isArray(parsed.items)) return parsed.items;
+        } catch {}
+        return null;
+    }
+
     const SEED_DEMO = [
         {
-            key: "精选集/IMG_0635.jpg",
+            key: "精选/IMG_0635.jpg",
             url: "https://cllli.oss-cn-beijing.aliyuncs.com/img/new/color/IMG_0635.jpg",
             size: 2845120,
             uploaded: "2026-10-23T10:30:00.000Z",
-            folder: "精选集",
+            folder: "精选",
             originalName: "IMG_0635.jpg",
             title: "山谷晨雾",
             width: 3840,
@@ -192,11 +224,11 @@ document.addEventListener("DOMContentLoaded", () => {
             exif: { camera: "Canon EOS R5", lens: "RF 70-200mm F2.8", focal: "135mm", aperture: "f/4", shutter: "1/500s", iso: "160" }
         },
         {
-            key: "精选集/IMG_0801.jpg",
+            key: "精选/IMG_0801.jpg",
             url: "https://cllli.oss-cn-beijing.aliyuncs.com/img/new/line/IMG_0801.jpg",
             size: 1984000,
             uploaded: "2026-10-23T09:15:00.000Z",
-            folder: "精选集",
+            folder: "精选",
             originalName: "IMG_0801.jpg",
             title: "建筑光影",
             width: 3000,
@@ -205,11 +237,11 @@ document.addEventListener("DOMContentLoaded", () => {
             exif: { camera: "Hasselblad X2D", lens: "XCD 55V", focal: "55mm", aperture: "f/5.6", shutter: "1/640s", iso: "64" }
         },
         {
-            key: "街头纪实/IMG_2655.jpg",
+            key: "街拍/IMG_2655.jpg",
             url: "https://cllli.oss-cn-beijing.aliyuncs.com/img/new/city/IMG_2655.jpg",
             size: 3120400,
             uploaded: "2026-10-21T14:20:00.000Z",
-            folder: "街头纪实",
+            folder: "街拍",
             originalName: "IMG_2655.jpg",
             title: "城市黄昏",
             width: 3600,
@@ -218,11 +250,11 @@ document.addEventListener("DOMContentLoaded", () => {
             exif: { camera: "Canon EOS R5", lens: "RF 24-70mm F2.8", focal: "50mm", aperture: "f/8", shutter: "1/250s", iso: "100" }
         },
         {
-            key: "黑白胶片/IMG_2973.jpg",
+            key: "胶片/IMG_2973.jpg",
             url: "https://cllli.oss-cn-beijing.aliyuncs.com/img/new/black/IMG_2973.jpg",
             size: 2450100,
             uploaded: "2026-10-18T18:00:00.000Z",
-            folder: "黑白胶片",
+            folder: "胶片",
             originalName: "IMG_2973.jpg",
             title: "静谧海岸",
             width: 3840,
@@ -233,7 +265,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ];
 
     /* =========================================================
-       1. 工具函数
+       1. 工具函数与国内智能图片加速 URL 解析
     ========================================================= */
     function formatBytes(bytes) {
         if (!bytes || bytes <= 0) return '0 B';
@@ -244,21 +276,21 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function formatDateHeading(isoStr) {
-        if (!isoStr) return { key: '更早归档', title: '更早归档', sub: '历史影像' };
+        if (!isoStr) return { key: '更早', title: '更早', sub: '' };
         const d = new Date(isoStr);
-        if (isNaN(d.getTime())) return { key: '更早归档', title: '更早归档', sub: '历史影像' };
+        if (isNaN(d.getTime())) return { key: '更早', title: '更早', sub: '' };
 
         const yyyy = d.getFullYear();
         const mm = String(d.getMonth() + 1).padStart(2, '0');
         const dd = String(d.getDate()).padStart(2, '0');
-        const dateKey = `${yyyy}年${mm}月${dd}日`;
+        const dateKey = `${yyyy}.${mm}.${dd}`;
 
         const now = new Date();
-        const todayKey = `${now.getFullYear()}年${String(now.getMonth() + 1).padStart(2, '0')}月${String(now.getDate()).padStart(2, '0')}日`;
+        const todayKey = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}`;
 
         const yest = new Date(now);
         yest.setDate(now.getDate() - 1);
-        const yestKey = `${yest.getFullYear()}年${String(yest.getMonth() + 1).padStart(2, '0')}月${String(yest.getDate()).padStart(2, '0')}日`;
+        const yestKey = `${yest.getFullYear()}.${String(yest.getMonth() + 1).padStart(2, '0')}.${String(yest.getDate()).padStart(2, '0')}`;
 
         const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
         const wk = weekdays[d.getDay()];
@@ -279,10 +311,10 @@ document.addEventListener("DOMContentLoaded", () => {
             el.style.opacity = '0';
             el.style.transition = 'opacity 0.2s ease';
             setTimeout(() => el.remove(), 220);
-        }, 2100);
+        }, 2000);
     }
 
-    async function copyText(text, label = '直链') {
+    async function copyText(text, label = '链接') {
         if (!text) return;
         try {
             await navigator.clipboard.writeText(text);
@@ -307,7 +339,18 @@ document.addEventListener("DOMContentLoaded", () => {
         return item.url;
     }
 
-    function getFastThumbUrl(item) {
+    function getAbsoluteUrl(relativeOrFullUrl) {
+        if (!relativeOrFullUrl) return '';
+        if (/^https?:\/\//i.test(relativeOrFullUrl) || relativeOrFullUrl.startsWith('data:')) {
+            return relativeOrFullUrl;
+        }
+        return `${location.origin}${relativeOrFullUrl.startsWith('/') ? '' : '/'}${relativeOrFullUrl}`;
+    }
+
+    // 获取极速缩略图地址：
+    // 1) 若已有 R2 极速缩略图 (.thumbs/ ~15KB WebP)，直接走边缘节点缓存直连
+    // 2) 若是尚未生成缩略图的历史大图且开启了 wsrv-cdn 模式，自动通过全球边缘压缩为 640px WebP (~18KB) 防止国内拉取数 MB 原图卡死
+    function getFastThumbUrl(item, forceDirect = false) {
         if (!item) return '';
         if (item.thumbKey && !item.isDemo) {
             if (customDomain) {
@@ -319,7 +362,11 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         const rawUrl = getFullUrl(item);
         if (rawUrl.includes('aliyuncs.com') && !rawUrl.includes('x-oss-process')) {
-            return `${rawUrl}?x-oss-process=image/resize,l_960,limit_1/auto-orient,1/quality,q_84/format,webp`;
+            return `${rawUrl}?x-oss-process=image/resize,l_800,limit_1/auto-orient,1/quality,q_82/format,webp`;
+        }
+        if (!forceDirect && chinaCdnMode === 'wsrv-cdn' && !item.isDemo && !isLocalhost && (Number(item.size) || 0) > 180 * 1024) {
+            const abs = getAbsoluteUrl(rawUrl);
+            return `https://wsrv.nl/?url=${encodeURIComponent(abs)}&w=640&q=78&output=webp`;
         }
         return rawUrl;
     }
@@ -371,15 +418,15 @@ document.addEventListener("DOMContentLoaded", () => {
         const freeGB = (freeBytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 
         if (quotaPillText) {
-            quotaPillText.textContent = `${usedFormatted} / 10 GB`;
+            quotaPillText.textContent = `${usedFormatted} / 10G`;
         }
         if (quotaMiniFill) {
-            quotaMiniFill.style.width = `${Math.max(1.5, pct)}%`;
+            quotaMiniFill.style.width = `${Math.max(2, pct)}%`;
             quotaMiniFill.style.background = pct > 85 ? 'var(--danger)' : 'var(--ok)';
         }
 
-        if (meterPct) meterPct.textContent = `已用 ${pct < 0.1 && totalUsedBytes > 0 ? '< 0.1' : pct.toFixed(1)}%`;
-        if (meterUsedVal) meterUsedVal.textContent = `${usedFormatted}（共 ${allImages.length} 幅）`;
+        if (meterPct) meterPct.textContent = `${pct < 0.1 && totalUsedBytes > 0 ? '< 0.1' : pct.toFixed(1)}%`;
+        if (meterUsedVal) meterUsedVal.textContent = `${usedFormatted} (${allImages.length})`;
         if (meterFreeVal) meterFreeVal.textContent = freeGB;
 
         const catBytesMap = new Map();
@@ -393,7 +440,7 @@ document.addEventListener("DOMContentLoaded", () => {
             meterCatBreakdown.innerHTML = '';
 
             if (totalUsedBytes === 0) {
-                meterCatBreakdown.innerHTML = `<span>当前存储桶为空 · 10.00 GB 全部可用</span>`;
+                meterCatBreakdown.innerHTML = `<span>10.00 GB 可用</span>`;
                 return;
             }
 
@@ -415,7 +462,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     itemEl.className = 'breakdown-item';
                     itemEl.innerHTML = `
                         <span class="breakdown-dot" style="background:${color}"></span>
-                        <span>${label}：${formatBytes(bytes)}</span>
+                        <span>${label} ${formatBytes(bytes)}</span>
                     `;
                     meterCatBreakdown.appendChild(itemEl);
                 });
@@ -423,11 +470,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     document.getElementById('btn-quota-detail')?.addEventListener('click', () => openSettings());
-    document.getElementById('mob-btn-quota')?.addEventListener('click', () => openSettings());
 
     /* =========================================================
        3. 首屏光学星环密码门禁 (Optical Ring Lock Vault)
-          支持打字星环充能旋转、波纹扩散、密码显隐与丝滑揭幕
     ========================================================= */
     const lockScreen = document.getElementById('lock-screen');
     const lockForm = document.getElementById('lock-form');
@@ -448,7 +493,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let typingBumpTimer = null;
 
-    // 显隐密码切换
     lockToggleVisBtn?.addEventListener('click', () => {
         if (!lockInput) return;
         const isPwd = lockInput.type === 'password';
@@ -470,7 +514,6 @@ document.addEventListener("DOMContentLoaded", () => {
         lockMark?.classList.toggle('has-input', len > 0);
         lockInputGroup?.classList.toggle('has-val', len > 0);
 
-        // 光学星环充能进度与内环旋转角度
         const circumference = 226.2;
         const fillRatio = Math.min(len, 10) / 10;
         if (lockRingProgress) {
@@ -525,7 +568,7 @@ document.addEventListener("DOMContentLoaded", () => {
             lockError.textContent = '';
             lockError.classList.remove('ok-msg');
         }
-        dismissSiteLoader(120);
+        dismissSiteLoader(80);
     }
 
     function showLockUI(hintMessage = '') {
@@ -540,7 +583,7 @@ document.addEventListener("DOMContentLoaded", () => {
             lockError.classList.remove('ok-msg');
             lockError.textContent = hintMessage;
         }
-        dismissSiteLoader(180);
+        dismissSiteLoader(120);
         setTimeout(() => lockInput?.focus(), 120);
     }
 
@@ -558,54 +601,52 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // 页面启动时探测 Cloudflare 节点绑定状态
     async function probeServerStatus() {
         try {
             const res = await fetch('/api/images?action=status', { cache: 'no-store' });
             const ct = res.headers.get('content-type') || '';
-            if (!ct.includes('application/json')) {
-                if (lockFooterHint) {
-                    lockFooterHint.textContent = isLocalhost
-                        ? '本地开发预览模式 · 输入任意密码即可体验'
-                        : '云端边缘节点已就绪 · 请输入访问密码';
-                }
-                return;
-            }
+            if (!ct.includes('application/json')) return;
             const info = await res.json();
             if (lockFooterHint) {
-                if (info.r2Bound && info.passwordConfigured) {
-                    lockFooterHint.textContent = 'Cloudflare R2 云端存储与加密保护已就绪';
-                } else if (info.r2Bound && info.needsFirstSetup) {
-                    lockFooterHint.textContent = 'R2 存储桶已连接 · 首次输入密码将自动加密锁定此空间';
+                if (info.r2Bound && info.needsFirstSetup) {
+                    lockFooterHint.textContent = '首次输入密码将自动加密锁定';
                 } else if (!info.r2Bound) {
-                    lockFooterHint.textContent = '请在 Cloudflare 后台绑定 R2 存储桶 (BUCKET)';
+                    lockFooterHint.textContent = '请绑定 R2 存储桶 (BUCKET)';
+                } else {
+                    lockFooterHint.textContent = '';
                 }
             }
-        } catch {
-            if (lockFooterHint) {
-                lockFooterHint.textContent = isLocalhost
-                    ? '本地预览模式 · 输入任意密码进入'
-                    : '云端安全门禁保护中';
-            }
-        }
+        } catch {}
     }
 
     async function tryUnlockAndLoad(passwordAttempt, isInitialAutoCheck = false) {
         lockSubmitBtn?.classList.add('verifying');
-        if (skeletonStageEl) skeletonStageEl.hidden = false;
+
+        // 如果本地已有缓存的云端快照且是自动登录，先在 <20ms 内瞬时渲染首屏，避免国内等待 API 期间白屏
+        const cachedSnapshot = isInitialAutoCheck ? loadCloudSnapshot() : null;
+        if (cachedSnapshot && cachedSnapshot.length > 0) {
+            isR2Connected = true;
+            allImages = cachedSnapshot;
+            unlockUI();
+            renderSpace();
+        } else if (skeletonStageEl) {
+            skeletonStageEl.hidden = false;
+        }
 
         try {
             const headers = {};
             if (passwordAttempt) headers['Authorization'] = `Bearer ${passwordAttempt}`;
 
-            const res = await fetch('/api/images', { headers, cache: 'no-store' });
+            const res = await fetch('/api/images', { headers });
             const ct = res.headers.get('content-type') || '';
 
             if (!ct.includes('application/json')) {
                 if (!isLocalhost) {
                     if (skeletonStageEl) skeletonStageEl.hidden = true;
-                    dismissSiteLoader(100);
-                    triggerLockShake('云端接口尚未就绪，请稍后刷新重试');
+                    dismissSiteLoader(80);
+                    if (!cachedSnapshot) {
+                        triggerLockShake('连接异常，请刷新重试');
+                    }
                     return false;
                 }
                 isR2Connected = false;
@@ -618,7 +659,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 adminToken = passwordAttempt;
                 localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
                 allImages = loadLocalItems();
-                if (r2ConnStatus) r2ConnStatus.textContent = '本地开发预览模式（未连接云端 R2）';
+                if (r2ConnStatus) r2ConnStatus.textContent = '本地预览模式';
                 if (skeletonStageEl) skeletonStageEl.hidden = true;
                 lockEmblemStage?.classList.add('unlocked-state');
                 unlockUI();
@@ -628,21 +669,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const data = await res.json();
 
-            // 1. 密码错误：严格拦截
+            // 1. 密码错误：严格拦截并清除失效快照
             if (res.status === 401 || res.status === 403 || data.locked || !data.isAdmin) {
                 localStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
+                localStorage.removeItem(STORAGE_KEYS.CLOUD_SNAPSHOT);
                 adminToken = '';
                 if (skeletonStageEl) skeletonStageEl.hidden = true;
-                dismissSiteLoader(100);
+                dismissSiteLoader(80);
                 if (!isInitialAutoCheck) {
-                    triggerLockShake(data.message || '访问密码不正确，请重新输入');
+                    triggerLockShake(data.message || '密码错误');
                 } else {
                     showLockUI();
                 }
                 return false;
             }
 
-            // 2. 密码验证通过！点亮星环并保存密码
+            // 2. 密码验证通过
             adminToken = passwordAttempt;
             localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
             isR2Connected = Boolean(data.r2Bound);
@@ -650,14 +692,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (lockError && !isInitialAutoCheck) {
                 lockError.classList.add('ok-msg');
-                lockError.textContent = '验证通过 · 正在开启私人影像馆...';
+                lockError.textContent = '验证通过';
             }
 
             if (data.firstTimeInitialized) {
-                toast('已将您的密码加密锁定至云端存储桶');
+                toast('密码已加密锁定至 R2');
             }
 
-            // 同步云端保存的自定义分类及配色
             if (Array.isArray(data.categories)) {
                 data.categories.forEach(c => {
                     if (c && c.name) {
@@ -667,45 +708,38 @@ document.addEventListener("DOMContentLoaded", () => {
                 saveLocalCategories();
             }
 
-            // 3. 密码正确但 R2 存储桶未绑定
             if (!isR2Connected) {
                 allImages = [];
                 if (r2ConnStatus) {
-                    r2ConnStatus.textContent = '尚未检测到 R2 存储桶绑定：请在 Cloudflare -> Settings -> Bindings 绑定 BUCKET';
+                    r2ConnStatus.textContent = '未检测到 R2 绑定 (BUCKET)';
                 }
-                const emptyTitle = document.querySelector('.empty-title');
-                const emptySub = document.querySelector('.empty-sub');
-                if (emptyTitle) emptyTitle.textContent = '密码验证通过，但尚未检测到 R2 存储桶绑定';
-                if (emptySub) emptySub.textContent = '请前往 Cloudflare Workers -> Settings -> Bindings 添加 R2 存储桶绑定（变量名填 BUCKET）';
                 if (skeletonStageEl) skeletonStageEl.hidden = true;
                 unlockUI();
                 renderSpace();
                 return true;
             }
 
-            // 4. 密码正确且 R2 已连接：加载真实云端图片
             allImages = Array.isArray(data.items) ? data.items : [];
+            saveCloudSnapshot(allImages);
+
             if (r2ConnStatus) {
-                r2ConnStatus.textContent = `已连接 Cloudflare R2 云端存储桶（共归档 ${allImages.length} 幅影像）`;
+                r2ConnStatus.textContent = `R2 已连接 · ${allImages.length} 项`;
             }
-            const emptyTitle = document.querySelector('.empty-title');
-            const emptySub = document.querySelector('.empty-sub');
-            if (emptyTitle) emptyTitle.textContent = '当前分类暂无影像 · 点击或拖拽照片上传';
-            if (emptySub) emptySub.textContent = '支持 JPG · PNG · WebP · GIF · SVG 真实比例无损时间线归档';
 
             if (skeletonStageEl) skeletonStageEl.hidden = true;
-            if (!isInitialAutoCheck) {
-                await new Promise(r => setTimeout(r, 240));
-            }
             unlockUI();
             renderSpace();
+            updateThumbAccelStatusUI();
             return true;
         } catch {
             if (skeletonStageEl) skeletonStageEl.hidden = true;
-            dismissSiteLoader(100);
+            dismissSiteLoader(80);
+            if (cachedSnapshot && cachedSnapshot.length > 0) {
+                return true;
+            }
             if (!isLocalhost) {
                 if (!isInitialAutoCheck) {
-                    triggerLockShake('网络连接超时，请重试');
+                    triggerLockShake('网络超时，请重试');
                 } else {
                     showLockUI();
                 }
@@ -729,12 +763,12 @@ document.addEventListener("DOMContentLoaded", () => {
         e.preventDefault();
         const val = (lockInput?.value || '').trim();
         if (!val) {
-            triggerLockShake('请输入访问密码');
+            triggerLockShake('请输入密码');
             return;
         }
         if (lockError) {
             lockError.classList.add('ok-msg');
-            lockError.textContent = '正在加密校验访问密钥...';
+            lockError.textContent = '验证中...';
         }
         await tryUnlockAndLoad(val, false);
     });
@@ -806,7 +840,6 @@ document.addEventListener("DOMContentLoaded", () => {
         applyZoomChange(mobileZoomLevel + 1, true);
     });
 
-    // 移动端双指捏合缩放网格
     let pinchStartDist = 0;
     let pinchTriggered = false;
     const spaceMainEl = document.getElementById('space-main');
@@ -838,21 +871,134 @@ document.addEventListener("DOMContentLoaded", () => {
     }, { passive: true });
 
     /* =========================================================
-       5. 全功能分类工作台 + 拖拽归档 + 瀑布流画廊 (Categories & Timeline)
+       5-A. 国内视口优先 3 并发图片加载调度器 + 极速 WebP 缩略图回填引擎
+            (彻底解决国内同时发起 20+ 跨境请求导致的 TCP 队头阻塞与假死)
     ========================================================= */
-    const folderTabsEl = document.getElementById('folder-tabs');
-    const batchMoveSelect = document.getElementById('batch-move-select');
-    const timelineStreamEl = document.getElementById('timeline-stream');
-    const emptyStageEl = document.getElementById('empty-stage');
-    const storageStat = document.getElementById('storage-stat');
-    const dropTargetHint = document.getElementById('drop-target-hint');
-    const editorialTitleEl = document.getElementById('editorial-title');
-    const editorialCatDotEl = document.getElementById('editorial-cat-dot');
-    const editorialStatSummaryEl = document.getElementById('editorial-stat-summary');
-    const editorialGridBadgeEl = document.getElementById('editorial-grid-badge');
-    const uploadToCurrentLabelEl = document.getElementById('upload-to-current-label');
+    const MAX_CONCURRENT_IMG_LOADS = 3;
+    let activeImgLoads = 0;
+    const pendingImgQueue = [];
 
-    // 针对存量未生成缩略图的历史大图：一旦浏览器解码成功，后台静默生成 720px WebP 缩略图与 24px LQIP 写回 R2
+    const viewportObserver = ('IntersectionObserver' in window)
+        ? new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                const task = entry.target._imgLoadTask;
+                if (!task) return;
+                task.inViewport = entry.isIntersecting;
+                if (entry.isIntersecting && !task.started && !task.queued) {
+                    task.queued = true;
+                    pendingImgQueue.push(task);
+                    pumpImageLoadQueue();
+                }
+            });
+        }, { rootMargin: '280px 0px' })
+        : null;
+
+    function resetImageLoadQueue() {
+        pendingImgQueue.length = 0;
+        activeImgLoads = 0;
+    }
+
+    function pumpImageLoadQueue() {
+        while (activeImgLoads < MAX_CONCURRENT_IMG_LOADS && pendingImgQueue.length > 0) {
+            // 优先加载仍在当前可视区域内的图片
+            let pickIdx = pendingImgQueue.findIndex(t => t.inViewport && !t.started);
+            if (pickIdx === -1) {
+                pickIdx = pendingImgQueue.findIndex(t => !t.started);
+            }
+            if (pickIdx === -1) break;
+
+            const [task] = pendingImgQueue.splice(pickIdx, 1);
+            if (!task || task.started) continue;
+            task.started = true;
+            activeImgLoads++;
+            task.start(() => {
+                activeImgLoads = Math.max(0, activeImgLoads - 1);
+                pumpImageLoadQueue();
+            });
+        }
+    }
+
+    function scheduleCardImageLoad(imgEl, thumbWrap, item, isPriorityFirstScreen) {
+        const primaryUrl = getFastThumbUrl(item, false);
+        const directFallbackUrl = getFastThumbUrl(item, true);
+
+        const task = {
+            inViewport: isPriorityFirstScreen,
+            queued: false,
+            started: false,
+            start(doneCallback) {
+                let settled = false;
+                let retryCount = 0;
+                const finish = () => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timeoutId);
+                    doneCallback();
+                };
+
+                // 单张缩略图超过 9 秒未响应则自动切换备用线路或释放并发槽位，绝不卡死后续图片
+                const timeoutId = setTimeout(() => {
+                    if (!settled && !imgEl.classList.contains('is-loaded')) {
+                        if (retryCount === 0 && primaryUrl !== directFallbackUrl) {
+                            retryCount++;
+                            imgEl.src = directFallbackUrl;
+                        } else {
+                            finish();
+                        }
+                    }
+                }, 9000);
+
+                imgEl.onload = () => {
+                    finish();
+                    imgEl.classList.add('is-loaded');
+                    thumbWrap?.classList.add('loaded-wrap');
+                    if (thumbWrap) thumbWrap.style.backgroundImage = '';
+                    const retryOverlay = thumbWrap?.querySelector('.thumb-retry-overlay');
+                    if (retryOverlay) retryOverlay.hidden = true;
+
+                    if ((!item.width || !item.height) && imgEl.naturalWidth && imgEl.naturalHeight) {
+                        item.width = imgEl.naturalWidth;
+                        item.height = imgEl.naturalHeight;
+                    }
+
+                    if (!item.thumbKey || !item.lqip) {
+                        queueBackfillThumb(item, imgEl);
+                    }
+                };
+
+                imgEl.onerror = () => {
+                    if (retryCount === 0) {
+                        retryCount++;
+                        // 如果 wsrv 代理或首次请求失败，立刻回退直连或加时间戳重试
+                        const nextUrl = (primaryUrl !== directFallbackUrl)
+                            ? directFallbackUrl
+                            : `${primaryUrl}${primaryUrl.includes('?') ? '&' : '?'}_retry=${Date.now()}`;
+                        setTimeout(() => {
+                            imgEl.src = nextUrl;
+                        }, 300);
+                    } else {
+                        finish();
+                        const retryOverlay = thumbWrap?.querySelector('.thumb-retry-overlay');
+                        if (retryOverlay) retryOverlay.hidden = false;
+                    }
+                };
+
+                imgEl.src = primaryUrl;
+            }
+        };
+
+        imgEl._imgLoadTask = task;
+
+        if (isPriorityFirstScreen || !viewportObserver) {
+            task.queued = true;
+            pendingImgQueue.push(task);
+            pumpImageLoadQueue();
+        } else {
+            viewportObserver.observe(imgEl);
+        }
+    }
+
+    // 针对存量未生成缩略图的历史大图：生成 600px 高清轻量 WebP (~15KB) 与 24px LQIP 写回 R2
     const backfilledKeys = new Set();
     let isBackfilling = false;
     const backfillQueue = [];
@@ -875,15 +1021,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 lCanvas.getContext('2d').drawImage(imgSource, 0, 0, lw, lh);
                 let lqip = '';
                 try {
-                    lqip = lCanvas.toDataURL('image/webp', 0.5);
+                    lqip = lCanvas.toDataURL('image/webp', 0.48);
                     if (!lqip.startsWith('data:image/webp')) {
-                        lqip = lCanvas.toDataURL('image/jpeg', 0.5);
+                        lqip = lCanvas.toDataURL('image/jpeg', 0.48);
                     }
                 } catch {
                     lqip = '';
                 }
 
-                const thumbMax = 720;
+                // 600px WebP 缩略图：兼顾 Retina 清晰度与 ~15KB 极小体积，国内毫秒级加载
+                const thumbMax = 600;
                 let tw = nw;
                 let th = nh;
                 if (tw > thumbMax || th > thumbMax) {
@@ -901,11 +1048,40 @@ document.addEventListener("DOMContentLoaded", () => {
                 tCanvas.getContext('2d').drawImage(imgSource, 0, 0, tw, th);
                 tCanvas.toBlob((thumbBlob) => {
                     resolve({ thumbBlob, lqip, width: nw, height: nh });
-                }, 'image/webp', 0.78);
+                }, 'image/webp', 0.74);
             } catch {
                 resolve({ thumbBlob: null, lqip: '', width: 0, height: 0 });
             }
         });
+    }
+
+    async function uploadBackfillForItem(item, imgSource) {
+        const { thumbBlob, lqip, width, height } = await createCanvasThumbAndLqip(imgSource);
+        if (!thumbBlob) return false;
+        const fd = new FormData();
+        fd.append('action', 'backfillThumb');
+        fd.append('key', item.key);
+        fd.append('thumb', new File([thumbBlob], 'thumb.webp', { type: 'image/webp' }));
+        if (lqip) fd.append('lqip', lqip);
+        if (width) fd.append('width', String(width));
+        if (height) fd.append('height', String(height));
+
+        const headers = {};
+        if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+        const res = await fetch('/api/images', { method: 'POST', headers, body: fd });
+        if (!res.ok) return false;
+        const data = await res.json();
+        if (data.ok) {
+            item.thumbKey = data.thumbKey;
+            item.thumbUrl = data.thumbUrl;
+            if (data.lqip) item.lqip = data.lqip;
+            if (width) item.width = width;
+            if (height) item.height = height;
+            saveCloudSnapshot(allImages);
+            updateThumbAccelStatusUI();
+            return true;
+        }
+        return false;
     }
 
     async function processBackfillQueue() {
@@ -916,29 +1092,9 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!item || !item.key || backfilledKeys.has(item.key)) continue;
             backfilledKeys.add(item.key);
             try {
-                const { thumbBlob, lqip, width, height } = await createCanvasThumbAndLqip(imgEl);
-                if (!thumbBlob) continue;
-                const fd = new FormData();
-                fd.append('action', 'backfillThumb');
-                fd.append('key', item.key);
-                fd.append('thumb', new File([thumbBlob], 'thumb.webp', { type: 'image/webp' }));
-                if (lqip) fd.append('lqip', lqip);
-                if (width) fd.append('width', String(width));
-                if (height) fd.append('height', String(height));
-
-                const headers = {};
-                if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
-                const res = await fetch('/api/images', { method: 'POST', headers, body: fd });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.ok) {
-                        item.thumbKey = data.thumbKey;
-                        item.thumbUrl = data.thumbUrl;
-                        if (data.lqip) item.lqip = data.lqip;
-                    }
-                }
+                await uploadBackfillForItem(item, imgEl);
             } catch {}
-            await new Promise(r => setTimeout(r, 700));
+            await new Promise(r => setTimeout(r, 500));
         }
         isBackfilling = false;
     }
@@ -950,10 +1106,76 @@ document.addEventListener("DOMContentLoaded", () => {
         if (item.thumbKey && item.lqip) return;
         if (backfilledKeys.has(item.key)) return;
         backfillQueue.push({ item, imgEl });
-        setTimeout(processBackfillQueue, 1200);
+        setTimeout(processBackfillQueue, 900);
     }
 
-    // 统一将指定图片移动到目标分类（支持单张或批量）
+    // 设置面板中的「国内极速缩略图覆盖率」与「一键全量生成极速缩略图」
+    const thumbAccelStatusEl = document.getElementById('thumb-accel-status');
+    const btnOptimizeAllThumbs = document.getElementById('btn-optimize-all-thumbs');
+
+    function getUnoptimizedItems() {
+        return allImages.filter(item => {
+            if (!item || item.isDemo || !item.key) return false;
+            const ext = (item.key.split('.').pop() || '').toLowerCase();
+            if (ext === 'svg' || ext === 'gif') return false;
+            return !item.thumbKey || !item.lqip;
+        });
+    }
+
+    function updateThumbAccelStatusUI() {
+        if (!thumbAccelStatusEl) return;
+        if (!isR2Connected || allImages.length === 0) {
+            thumbAccelStatusEl.textContent = `0 / 0 已加速`;
+            return;
+        }
+        const missing = getUnoptimizedItems().length;
+        const accelerated = Math.max(0, allImages.length - missing);
+        thumbAccelStatusEl.textContent = `${accelerated} / ${allImages.length} 已生成极速缩略图`;
+        if (btnOptimizeAllThumbs && !btnOptimizeAllThumbs.disabled) {
+            btnOptimizeAllThumbs.textContent = missing > 0
+                ? `一键加速剩余 ${missing} 张历史大图`
+                : '全部图片已完成极速缩略图加速 ✓';
+        }
+    }
+
+    btnOptimizeAllThumbs?.addEventListener('click', async () => {
+        if (!isR2Connected) return toast('未连接 R2 存储桶');
+        const missingList = getUnoptimizedItems();
+        if (missingList.length === 0) {
+            return toast('所有图片均已拥有 ~15KB 极速缩略图');
+        }
+        btnOptimizeAllThumbs.disabled = true;
+        let done = 0;
+        for (const item of missingList) {
+            btnOptimizeAllThumbs.textContent = `正在生成极速缩略图 (${done + 1}/${missingList.length})...`;
+            try {
+                const img = await new Promise((resolve, reject) => {
+                    const el = new Image();
+                    el.crossOrigin = 'anonymous';
+                    el.onload = () => resolve(el);
+                    el.onerror = reject;
+                    el.src = getFullUrl(item);
+                });
+                await uploadBackfillForItem(item, img);
+                done++;
+            } catch {}
+        }
+        btnOptimizeAllThumbs.disabled = false;
+        updateThumbAccelStatusUI();
+        renderSpace();
+        toast(`已完成 ${done} 张图片的国内极速缩略图生成`);
+    });
+
+    /* =========================================================
+       5-B. 分类导航栏 + 拖拽归档 + 瀑布流画廊 (Categories & Timeline)
+    ========================================================= */
+    const folderTabsEl = document.getElementById('folder-tabs');
+    const batchMoveSelect = document.getElementById('batch-move-select');
+    const timelineStreamEl = document.getElementById('timeline-stream');
+    const emptyStageEl = document.getElementById('empty-stage');
+    const storageStat = document.getElementById('storage-stat');
+    const dropTargetHint = document.getElementById('drop-target-hint');
+
     async function moveImagesToCategory(keys, targetFolder) {
         const cleanFolder = (targetFolder || 'default').trim();
         if (!keys || keys.length === 0) return false;
@@ -978,11 +1200,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
                 const data = await res.json();
                 if (!res.ok || !data.ok) {
-                    toast(data.error || '移动分类失败');
+                    toast(data.error || '移动失败');
                     return false;
                 }
             } catch {
-                toast('网络错误，移动分类失败');
+                toast('网络错误');
                 return false;
             }
         }
@@ -991,13 +1213,13 @@ document.addEventListener("DOMContentLoaded", () => {
         allImages.forEach(img => {
             if (keySet.has(img.key)) img.folder = cleanFolder;
         });
-        if (!isR2Connected) saveLocalItems();
+        if (isR2Connected) saveCloudSnapshot(allImages);
+        else saveLocalItems();
         renderSpace();
-        toast(`已将 ${keys.length} 幅影像归入「${formatFolderDisplayName(cleanFolder)}」`);
+        toast(`已移入「${formatFolderDisplayName(cleanFolder)}」`);
         return true;
     }
 
-    // 为分类胶囊绑定拖拽接收事件（支持把卡片或电脑文件直接拖到顶部分类胶囊上！）
     function bindTabDropTarget(tabBtn, targetFolder) {
         if (targetFolder === 'all') return;
         tabBtn.addEventListener('dragover', (e) => {
@@ -1015,14 +1237,12 @@ document.addEventListener("DOMContentLoaded", () => {
             dropOverlay?.classList.remove('active');
             dragDepth = 0;
 
-            // 1. 如果是拖拽外部文件到该分类标签上，直接上传至该分类
             const files = Array.from(e.dataTransfer?.files || []).filter(f => f.type.startsWith('image/'));
             if (files.length > 0) {
                 await uploadFiles(files, targetFolder);
                 return;
             }
 
-            // 2. 如果是拖拽画廊内的图片卡片到该分类标签上，直接移动分类
             const draggedKey = e.dataTransfer?.getData('text/xiang-photo-key');
             if (draggedKey) {
                 const keysToMove = selectedKeys.has(draggedKey) && selectedKeys.size > 0
@@ -1048,14 +1268,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
         folderTabsEl.innerHTML = '';
 
-        // 1. 全部影像标签
+        // 1. 全部标签
         const allBtn = document.createElement('button');
         allBtn.type = 'button';
         allBtn.className = `tab-item ${currentFolder === 'all' ? 'active' : ''}`;
-        allBtn.style.setProperty('--cat-color', '#111113');
+        allBtn.style.setProperty('--cat-color', '#0f172a');
         allBtn.innerHTML = `
             <span class="tab-dot"></span>
-            <span>全部影像</span>
+            <span>全部</span>
             <span class="tab-count">${allImages.length}</span>
         `;
         allBtn.addEventListener('click', () => {
@@ -1064,18 +1284,17 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         folderTabsEl.appendChild(allBtn);
 
-        // 2. 各个具体分类标签
+        // 2. 各个分类标签
         const folderList = Array.from(folderCounts.keys());
         folderList.forEach(folder => {
             const count = folderCounts.get(folder) || 0;
-            // 如果默认分类为空且已有其他图片/分类，仍保留默认归档方便拖拽
             const color = getCategoryColor(folder);
             const label = formatFolderDisplayName(folder);
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = `tab-item ${currentFolder === folder ? 'active' : ''}`;
             btn.style.setProperty('--cat-color', color);
-            btn.title = `点击查看「${label}」（也可将照片直接拖拽到此标签归档）`;
+            btn.title = `${label}（支持拖拽图片至此归档）`;
             btn.innerHTML = `
                 <span class="tab-dot"></span>
                 <span>${label}</span>
@@ -1089,9 +1308,8 @@ document.addEventListener("DOMContentLoaded", () => {
             folderTabsEl.appendChild(btn);
         });
 
-        // 同步底部批量移动下拉框
         if (batchMoveSelect) {
-            batchMoveSelect.innerHTML = `<option value="">批量移动至分类...</option>`;
+            batchMoveSelect.innerHTML = `<option value="">移动至分类...</option>`;
             folderList.forEach(f => {
                 const opt = document.createElement('option');
                 opt.value = f;
@@ -1100,22 +1318,19 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             const newOpt = document.createElement('option');
             newOpt.value = '__new__';
-            newOpt.textContent = '+ 新建分类并移入...';
+            newOpt.textContent = '+ 新建分类...';
             batchMoveSelect.appendChild(newOpt);
         }
 
         const targetUploadFolder = currentFolder === 'all' ? 'default' : currentFolder;
         const targetLabel = formatFolderDisplayName(targetUploadFolder);
         if (dropTargetHint) {
-            dropTargetHint.textContent = `松开鼠标将上传至「${targetLabel}」`;
-        }
-        if (uploadToCurrentLabelEl) {
-            uploadToCurrentLabelEl.textContent = `+ 上传至「${targetLabel}」`;
+            dropTargetHint.textContent = `上传至「${targetLabel}」`;
         }
     }
 
     /* =========================================================
-       5-B. 分类管理工作台弹窗 (#category-modal) & 单卡快捷菜单 (#quick-cat-popover)
+       5-C. 分类管理弹窗 (#category-modal) & 单卡快捷菜单 (#quick-cat-popover)
     ========================================================= */
     const categoryModal = document.getElementById('category-modal');
     const formCreateCategory = document.getElementById('form-create-category');
@@ -1139,7 +1354,6 @@ document.addEventListener("DOMContentLoaded", () => {
             swatch.type = 'button';
             swatch.className = `cat-swatch ${color === selectedNewCatColor ? 'active' : ''}`;
             swatch.style.background = color;
-            swatch.title = `选择颜色 ${color}`;
             swatch.addEventListener('click', () => {
                 selectedNewCatColor = color;
                 renderNewCategoryPalette();
@@ -1162,7 +1376,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const folders = Array.from(folderCounts.keys());
         if (catModalCountEl) {
-            catModalCountEl.textContent = `共 ${folders.length} 个分类`;
+            catModalCountEl.textContent = `${folders.length}`;
         }
 
         catManageListEl.innerHTML = '';
@@ -1177,9 +1391,9 @@ document.addEventListener("DOMContentLoaded", () => {
             row.className = 'cat-manage-row';
             row.innerHTML = `
                 <div class="cat-row-left">
-                    <button type="button" class="cat-row-color-btn" style="background:${color}" title="点击切换此分类标识色"></button>
+                    <button type="button" class="cat-row-color-btn" style="background:${color}" title="切换颜色"></button>
                     <span class="cat-row-name">${label}</span>
-                    <span class="cat-row-count">${count} 幅</span>
+                    <span class="cat-row-count">${count}</span>
                 </div>
                 <div class="cat-row-actions">
                     <button type="button" class="cat-mini-btn btn-cat-view">查看</button>
@@ -1188,7 +1402,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
             `;
 
-            // 点击色点循环切换 10 种高级配色
             row.querySelector('.cat-row-color-btn')?.addEventListener('click', async () => {
                 const idx = DYNAMIC_PALETTE.indexOf(color);
                 const nextColor = DYNAMIC_PALETTE[(idx + 1) % DYNAMIC_PALETTE.length];
@@ -1196,19 +1409,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 await syncCategoriesToCloud();
                 renderCategoryStudioList();
                 renderSpace();
-                toast(`已更新「${label}」的分类标识色`);
             });
 
-            // 点击查看该分类
             row.querySelector('.btn-cat-view')?.addEventListener('click', () => {
                 currentFolder = folder;
                 closeCategoryModal();
                 renderSpace();
             });
 
-            // 点击改名
             row.querySelector('.btn-cat-rename')?.addEventListener('click', async () => {
-                const nextRaw = prompt(`重命名分类「${label}」为：`, folder);
+                const nextRaw = prompt(`重命名「${label}」为：`, folder);
                 if (!nextRaw) return;
                 const cleanNext = nextRaw.trim().replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '-');
                 if (!cleanNext || cleanNext === folder) return;
@@ -1227,14 +1437,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (currentFolder === folder) currentFolder = cleanNext;
                 renderCategoryStudioList();
                 renderSpace();
-                toast(`分类已重命名为「${cleanNext}」`);
+                toast(`已重命名为「${cleanNext}」`);
             });
 
-            // 点击删除分类（安全将照片归入默认归档）
             row.querySelector('.btn-cat-delete')?.addEventListener('click', async () => {
                 const msg = count > 0
-                    ? `确定删除分类「${label}」吗？\n该分类下的 ${count} 幅影像不会丢失，将自动移入「默认归档」。`
-                    : `确定删除空分类「${label}」吗？`;
+                    ? `删除分类「${label}」？（其中 ${count} 张图片将移入默认分类）`
+                    : `删除分类「${label}」？`;
                 if (!confirm(msg)) return;
 
                 categoryMetaMap.delete(folder);
@@ -1248,7 +1457,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (currentFolder === folder) currentFolder = 'all';
                 renderCategoryStudioList();
                 renderSpace();
-                toast(`已删除分类「${label}」`);
+                toast(`已删除「${label}」`);
             });
 
             catManageListEl.appendChild(row);
@@ -1274,20 +1483,19 @@ document.addEventListener("DOMContentLoaded", () => {
         e.preventDefault();
         const raw = (inputNewCatName?.value || '').trim();
         if (!raw) {
-            toast('请输入新分类名称');
+            toast('请输入分类名称');
             inputNewCatName?.focus();
             return;
         }
         const clean = raw.replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '-');
         if (!clean || clean === 'all') {
-            toast('请输入有效的分类名称');
+            toast('名称无效');
             return;
         }
 
         categoryMetaMap.set(clean, { name: clean, color: selectedNewCatColor });
         if (inputNewCatName) inputNewCatName.value = '';
 
-        // 自动换下一个预设颜色方便连续创建
         const nextIdx = (DYNAMIC_PALETTE.indexOf(selectedNewCatColor) + 1) % DYNAMIC_PALETTE.length;
         selectedNewCatColor = DYNAMIC_PALETTE[nextIdx];
 
@@ -1304,18 +1512,16 @@ document.addEventListener("DOMContentLoaded", () => {
         renderNewCategoryPalette();
         renderCategoryStudioList();
         renderSpace();
-        toast(`已创建分类「${clean}」`);
+        toast(`已创建「${clean}」`);
     });
 
     document.getElementById('btn-new-folder')?.addEventListener('click', () => openCategoryModal(true));
-    document.getElementById('btn-manage-folders')?.addEventListener('click', () => openCategoryModal(false));
     document.getElementById('mob-btn-cat')?.addEventListener('click', () => openCategoryModal(false));
     document.getElementById('category-modal-close')?.addEventListener('click', closeCategoryModal);
     categoryModal?.addEventListener('click', (e) => {
         if (e.target === categoryModal) closeCategoryModal();
     });
 
-    // 单张卡片快捷切换分类气泡菜单 (#quick-cat-popover)
     const quickCatPopover = document.getElementById('quick-cat-popover');
     const quickCatListEl = document.getElementById('quick-cat-list');
     const quickCatNewBtn = document.getElementById('quick-cat-new-btn');
@@ -1362,8 +1568,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
         quickCatPopover.hidden = false;
         const rect = anchorEl.getBoundingClientRect();
-        const popW = 200;
-        const popH = Math.min(260, allCats.length * 34 + 70);
+        const popW = 190;
+        const popH = Math.min(260, allCats.length * 34 + 54);
         let left = Math.min(window.innerWidth - popW - 12, Math.max(12, rect.left));
         let top = rect.bottom + 6;
         if (top + popH > window.innerHeight - 16) {
@@ -1390,7 +1596,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // 搜索框与清空按钮
     const searchInputEl = document.getElementById('search-input');
     const searchClearBtn = document.getElementById('search-clear-btn');
 
@@ -1414,10 +1619,8 @@ document.addEventListener("DOMContentLoaded", () => {
         updateStorageQuotaUI();
         renderFolders();
 
-        // 1. 按上传时间从新到旧排序
         allImages.sort((a, b) => new Date(b.uploaded || 0).getTime() - new Date(a.uploaded || 0).getTime());
 
-        // 2. 筛选分类与搜索词
         filteredImages = allImages.filter(item => {
             const f = item.folder || 'default';
             if (currentFolder !== 'all' && f !== currentFolder) return false;
@@ -1427,25 +1630,14 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         const numCols = getColumnCount();
-        const filteredBytes = filteredImages.reduce((acc, item) => acc + (Number(item.size) || 0), 0);
 
         if (storageStat) {
             storageStat.textContent = String(filteredImages.length);
         }
-        if (editorialTitleEl) {
-            editorialTitleEl.textContent = formatFolderDisplayName(currentFolder);
-        }
-        if (editorialCatDotEl) {
-            editorialCatDotEl.style.background = getCategoryColor(currentFolder);
-        }
-        if (editorialStatSummaryEl) {
-            editorialStatSummaryEl.textContent = `共 ${filteredImages.length} 幅影像 · ${formatBytes(filteredBytes)}`;
-        }
-        if (editorialGridBadgeEl) {
-            editorialGridBadgeEl.textContent = `${numCols} 列视图`;
-        }
 
         if (!timelineStreamEl || !emptyStageEl) return;
+
+        resetImageLoadQueue();
 
         if (filteredImages.length === 0) {
             timelineStreamEl.innerHTML = '';
@@ -1456,7 +1648,6 @@ document.addEventListener("DOMContentLoaded", () => {
         emptyStageEl.hidden = true;
         timelineStreamEl.innerHTML = '';
 
-        // 3. 按日期分组构建时间线
         const dayGroups = new Map();
         filteredImages.forEach((item, globalFilteredIdx) => {
             const dInfo = formatDateHeading(item.uploaded);
@@ -1473,10 +1664,8 @@ document.addEventListener("DOMContentLoaded", () => {
         dayGroups.forEach((group) => {
             const section = document.createElement('section');
             section.className = 'timeline-section';
-            section.style.animationDelay = `${Math.min(sectionIdx * 60, 240)}ms`;
+            section.style.animationDelay = `${Math.min(sectionIdx * 45, 180)}ms`;
             sectionIdx++;
-
-            const dayBytes = group.entries.reduce((acc, e) => acc + (Number(e.item.size) || 0), 0);
 
             section.innerHTML = `
                 <div class="timeline-header">
@@ -1486,8 +1675,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         <span class="timeline-date-sub">${group.sub}</span>
                     </div>
                     <div class="timeline-meta-right">
-                        <span>${group.entries.length} 幅 · ${formatBytes(dayBytes)}</span>
-                        <button type="button" class="timeline-select-day-btn">全选当天</button>
+                        <span>${group.entries.length}</span>
+                        <button type="button" class="timeline-select-day-btn">全选</button>
                     </div>
                 </div>
                 <div class="masonry-board" style="grid-template-columns: repeat(${numCols}, 1fr);"></div>
@@ -1532,7 +1721,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 card.dataset.key = item.key;
                 card.draggable = true;
 
-                // 支持拖拽卡片到顶部分类胶囊直接归档
                 card.addEventListener('dragstart', (e) => {
                     e.dataTransfer?.setData('text/xiang-photo-key', item.key);
                 });
@@ -1541,87 +1729,50 @@ document.addEventListener("DOMContentLoaded", () => {
                 const folderLabel = formatFolderDisplayName(folderName);
                 const catColor = getCategoryColor(folderName);
                 const name = item.title || item.originalName || item.key.split('/').pop();
-                const info = (w && h) ? `${w}×${h}` : formatBytes(item.size);
                 const fullUrl = getFullUrl(item);
-                const thumbUrl = getFastThumbUrl(item);
 
                 const aspectStyle = (w > 0 && h > 0) ? `style="aspect-ratio: ${w} / ${h};"` : '';
-                const priorityAttr = globalFilteredIdx < 6 ? 'fetchpriority="high"' : 'loading="lazy"';
 
+                // 纯粹毛玻璃悬浮画布卡片：底栏信息内嵌为悬浮毛玻璃层 (.photo-glass-bar)
                 card.innerHTML = `
                     <div class="photo-thumb-wrap" ${aspectStyle}>
-                        <button type="button" class="thumb-check" title="勾选此影像">${isSelected ? '✓' : ''}</button>
-                        <img src="${thumbUrl}" alt="${name}" ${priorityAttr} decoding="async">
-                        <div class="thumb-retry-overlay" hidden><span>加载较慢 · 点击重试</span></div>
-                        <button type="button" class="thumb-copy-btn" title="复制原图直链">复制链接</button>
-                    </div>
-                    <div class="photo-caption">
-                        <div class="caption-left">
-                            <button type="button" class="cat-badge" style="--cat-color: ${catColor}" title="点击切换此影像的所属分类">
+                        <button type="button" class="thumb-check" title="选择">${isSelected ? '✓' : ''}</button>
+                        <img alt="${name}" decoding="async">
+                        <div class="thumb-retry-overlay" hidden><span>点击重试</span></div>
+                        <div class="photo-glass-bar">
+                            <button type="button" class="cat-badge" style="--cat-color: ${catColor}" title="切换分类">
                                 <span class="cat-badge-dot"></span>
                                 <span>${folderLabel}</span>
                             </button>
-                            <span class="caption-name">${name}</span>
+                            <button type="button" class="thumb-copy-btn" title="复制直链">复制</button>
                         </div>
-                        <span class="caption-info">${info}</span>
                     </div>
                 `;
 
                 const thumbWrap = card.querySelector('.photo-thumb-wrap');
                 const imgEl = card.querySelector('img');
                 const retryOverlay = card.querySelector('.thumb-retry-overlay');
-                const infoSpan = card.querySelector('.caption-info');
                 const copyBtn = card.querySelector('.thumb-copy-btn');
                 const catBadgeBtn = card.querySelector('.cat-badge');
 
+                // 0ms 瞬时模糊图占位 (LQIP)
                 if (item.lqip && thumbWrap) {
                     thumbWrap.style.backgroundImage = `url(${item.lqip})`;
                     thumbWrap.style.backgroundSize = 'cover';
                     thumbWrap.style.backgroundPosition = 'center';
                 }
 
-                let retryCount = 0;
-
-                imgEl.onload = () => {
-                    imgEl.classList.add('is-loaded');
-                    thumbWrap?.classList.add('loaded-wrap');
-                    if (thumbWrap) {
-                        thumbWrap.style.backgroundImage = '';
-                    }
-                    if (retryOverlay) retryOverlay.hidden = true;
-
-                    if ((!item.width || !item.height) && imgEl.naturalWidth && imgEl.naturalHeight) {
-                        item.width = imgEl.naturalWidth;
-                        item.height = imgEl.naturalHeight;
-                        if (infoSpan) infoSpan.textContent = `${item.width}×${item.height}`;
-                    }
-
-                    if (!item.thumbKey || !item.lqip) {
-                        queueBackfillThumb(item, imgEl);
-                    }
-                };
-
-                imgEl.onerror = () => {
-                    if (retryCount < 1) {
-                        retryCount++;
-                        setTimeout(() => {
-                            const sep = thumbUrl.includes('?') ? '&' : '?';
-                            imgEl.src = `${thumbUrl}${sep}_retry=${Date.now()}`;
-                        }, 800);
-                    } else if (retryOverlay) {
-                        retryOverlay.hidden = false;
-                    }
-                };
+                // 纳入国内 3 并发视口优先智能加载队列
+                scheduleCardImageLoad(imgEl, thumbWrap, item, globalFilteredIdx < 6);
 
                 retryOverlay?.addEventListener('click', (e) => {
                     e.stopPropagation();
                     retryOverlay.hidden = true;
-                    retryCount = 0;
-                    const sep = thumbUrl.includes('?') ? '&' : '?';
-                    imgEl.src = `${thumbUrl}${sep}_retry=${Date.now()}`;
+                    const directUrl = getFastThumbUrl(item, true);
+                    const sep = directUrl.includes('?') ? '&' : '?';
+                    imgEl.src = `${directUrl}${sep}_retry=${Date.now()}`;
                 });
 
-                // 点击卡片左下角分类胶囊弹出快捷切换分类菜单
                 catBadgeBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     openQuickCatPopover(item, catBadgeBtn);
@@ -1636,18 +1787,18 @@ document.addEventListener("DOMContentLoaded", () => {
                     e.stopPropagation();
                     copyText(fullUrl, '直链');
                     copyBtn.classList.add('copied');
-                    copyBtn.textContent = '✓ 已复制';
+                    copyBtn.textContent = '✓';
                     setTimeout(() => {
                         copyBtn.classList.remove('copied');
-                        copyBtn.textContent = '复制链接';
-                    }, 1200);
+                        copyBtn.textContent = '复制';
+                    }, 1000);
                 });
 
                 thumbWrap.addEventListener('click', () => {
                     if (isBatchMode || selectedKeys.size > 0) {
                         toggleSelection(item.key);
                     } else {
-                        openViewer(globalFilteredIdx, imgEl.currentSrc || thumbUrl);
+                        openViewer(globalFilteredIdx, imgEl.currentSrc || getFastThumbUrl(item));
                     }
                 });
 
@@ -1689,10 +1840,10 @@ document.addEventListener("DOMContentLoaded", () => {
         document.body.classList.toggle('batch-active', active);
         btnBatchToggle?.classList.toggle('active', active);
         mobBtnBatch?.classList.toggle('active', active);
-        if (btnBatchToggle) btnBatchToggle.textContent = active ? '退出批量' : '批量管理';
+        if (btnBatchToggle) btnBatchToggle.textContent = active ? '完成' : '多选';
         if (mobBtnBatch) mobBtnBatch.textContent = active ? '完成' : '多选';
         if (selectionDock) selectionDock.hidden = !active;
-        if (selCountEl) selCountEl.textContent = `已选 ${count} 项`;
+        if (selCountEl) selCountEl.textContent = `已选 ${count}`;
     }
 
     function toggleSelection(key) {
@@ -1745,7 +1896,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!target) return;
 
         const keys = Array.from(selectedKeys);
-        if (!keys.length) return toast('请先勾选要移动的影像');
+        if (!keys.length) return toast('请先选择图片');
 
         if (target === '__new__') {
             openCategoryModal(true, keys);
@@ -1761,25 +1912,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById('btn-sel-copy-url')?.addEventListener('click', () => {
         const items = getSelectedItemsList();
-        if (!items.length) return toast('请先勾选影像');
-        copyText(items.map(i => buildFormats(i).url).join('\n'), `${items.length} 条直链`);
+        if (!items.length) return toast('请先选择图片');
+        copyText(items.map(i => buildFormats(i).url).join('\n'), `${items.length} 条链接`);
     });
 
     document.getElementById('btn-sel-copy-md')?.addEventListener('click', () => {
         const items = getSelectedItemsList();
-        if (!items.length) return toast('请先勾选影像');
-        copyText(items.map(i => buildFormats(i).md).join('\n'), `${items.length} 条 Markdown`);
+        if (!items.length) return toast('请先选择图片');
+        copyText(items.map(i => buildFormats(i).md).join('\n'), `${items.length} 条 MD`);
     });
 
     document.getElementById('btn-sel-copy-html')?.addEventListener('click', () => {
         const items = getSelectedItemsList();
-        if (!items.length) return toast('请先勾选影像');
+        if (!items.length) return toast('请先选择图片');
         copyText(items.map(i => buildFormats(i).html).join('\n'), `${items.length} 条 HTML`);
     });
 
     document.getElementById('btn-sel-download')?.addEventListener('click', () => {
         const items = getSelectedItemsList();
-        if (!items.length) return toast('请先勾选影像');
+        if (!items.length) return toast('请先选择图片');
         items.forEach((item, idx) => {
             setTimeout(() => {
                 const a = document.createElement('a');
@@ -1791,13 +1942,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 a.remove();
             }, idx * 220);
         });
-        toast(`开始下载 ${items.length} 幅影像`);
+        toast(`开始下载 ${items.length} 项`);
     });
 
     document.getElementById('btn-sel-delete')?.addEventListener('click', async () => {
         const keys = Array.from(selectedKeys);
-        if (!keys.length) return toast('请先勾选要删除的影像');
-        if (!confirm(`确定永久删除选中的 ${keys.length} 幅影像吗？`)) return;
+        if (!keys.length) return toast('请先选择图片');
+        if (!confirm(`确定删除选中的 ${keys.length} 张图片吗？`)) return;
         const ok = await deleteImages(keys);
         if (ok) clearBatchMode();
     });
@@ -1821,14 +1972,16 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         const delSet = new Set(keys);
         allImages = allImages.filter(i => !delSet.has(i.key));
-        if (!isR2Connected) saveLocalItems();
+        if (isR2Connected) saveCloudSnapshot(allImages);
+        else saveLocalItems();
         renderSpace();
-        toast(`已删除 ${keys.length} 幅影像`);
+        updateThumbAccelStatusUI();
+        toast(`已删除 ${keys.length} 项`);
         return true;
     }
 
     /* =========================================================
-       7. 极速双层上传引擎 (720px WebP 缩略图 + 24px LQIP + 原生 EXIF)
+       7. 极速双层上传引擎 (600px WebP 缩略图 + 24px LQIP + 原生 EXIF)
     ========================================================= */
     const fileInput = document.getElementById('file-input');
     const dropOverlay = document.getElementById('drop-overlay');
@@ -1838,7 +1991,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const ribbonPercent = document.getElementById('ribbon-percent');
 
     document.getElementById('btn-upload')?.addEventListener('click', () => fileInput?.click());
-    document.getElementById('btn-upload-to-current')?.addEventListener('click', () => fileInput?.click());
     document.getElementById('mob-btn-upload')?.addEventListener('click', () => fileInput?.click());
     document.getElementById('empty-drop-trigger')?.addEventListener('click', () => fileInput?.click());
 
@@ -1886,7 +2038,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if (files.length) uploadFiles(files);
     });
 
-    // 原生零依赖极速 EXIF 二进制解析器 (<1ms)
     async function parseExif(file) {
         if (!file || !file.type.includes('jpeg')) return {};
         try {
@@ -2036,7 +2187,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const total = files.length;
 
         for (const rawFile of files) {
-            if (ribbonText) ribbonText.textContent = `正在上传 ${rawFile.name} 至「${targetLabel}」(${completed + 1}/${total})...`;
+            if (ribbonText) ribbonText.textContent = `正在上传 ${rawFile.name} (${completed + 1}/${total})...`;
             const pct = Math.round(((completed + 0.25) / total) * 100);
             if (ribbonBar) ribbonBar.style.width = `${pct}%`;
             if (ribbonPercent) ribbonPercent.textContent = `${pct}%`;
@@ -2098,19 +2249,21 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
 
                 allImages.unshift(newItem);
-                if (!isR2Connected) saveLocalItems();
+                if (isR2Connected) saveCloudSnapshot(allImages);
+                else saveLocalItems();
                 completed++;
                 const donePct = Math.round((completed / total) * 100);
                 if (ribbonBar) ribbonBar.style.width = `${donePct}%`;
                 if (ribbonPercent) ribbonPercent.textContent = `${donePct}%`;
                 renderSpace();
+                updateThumbAccelStatusUI();
             } catch (err) {
                 toast(err.message || '上传失败');
             }
         }
 
         if (completed > 0) {
-            toast(`已成功上传 ${completed} 幅影像至「${targetLabel}」`);
+            toast(`已上传 ${completed} 项至「${targetLabel}」`);
         }
         setTimeout(() => {
             if (uploadRibbon) uploadRibbon.hidden = true;
@@ -2185,7 +2338,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (btnLoadHd) {
             if (fullUrl && fullUrl !== fastThumb) {
                 btnLoadHd.hidden = false;
-                btnLoadHd.textContent = `查看原图 (${formatBytes(item.size)})`;
+                btnLoadHd.textContent = `加载原图 (${formatBytes(item.size)})`;
                 btnLoadHd.disabled = false;
             } else {
                 btnLoadHd.hidden = true;
@@ -2214,12 +2367,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const ex = item.exif || {};
         const entries = [
-            ['机身型号', ex.camera],
-            ['镜头规格', ex.lens],
+            ['相机', ex.camera],
+            ['镜头', ex.lens],
             ['焦距', ex.focal],
             ['光圈', ex.aperture],
-            ['快门速度', ex.shutter],
-            ['感光度 ISO', ex.iso]
+            ['快门', ex.shutter],
+            ['ISO', ex.iso]
         ].filter(([, v]) => Boolean(v));
 
         if (entries.length > 0 && exifBlock && exifList) {
@@ -2239,7 +2392,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const item = filteredImages[activeViewerIdx];
         if (!item) return;
         const fullUrl = getFullUrl(item);
-        btnLoadHd.textContent = '正在加载原图...';
+        btnLoadHd.textContent = '加载中...';
         btnLoadHd.disabled = true;
 
         try {
@@ -2255,7 +2408,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 btnLoadHd.hidden = true;
             }
         } catch {
-            btnLoadHd.textContent = '原图加载失败 · 点击重试';
+            btnLoadHd.textContent = '重试加载原图';
             btnLoadHd.disabled = false;
         }
     });
@@ -2310,16 +2463,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
         item.title = newTitle;
         item.folder = newFolder;
-        if (!isR2Connected) saveLocalItems();
+        if (isR2Connected) saveCloudSnapshot(allImages);
+        else saveLocalItems();
         populateViewer();
         renderSpace();
-        toast('影像信息已保存');
+        toast('已保存');
     });
 
     document.getElementById('btn-delete-single')?.addEventListener('click', async () => {
         const item = filteredImages[activeViewerIdx];
         if (!item) return;
-        if (!confirm(`确定删除影像「${item.title || item.originalName}」吗？`)) return;
+        if (!confirm(`确定删除「${item.title || item.originalName}」吗？`)) return;
         const ok = await deleteImages([item.key]);
         if (ok) closeViewer();
     });
@@ -2374,16 +2528,19 @@ document.addEventListener("DOMContentLoaded", () => {
     }, { passive: true });
 
     /* =========================================================
-       9. 空间设置与一键锁屏弹窗
+       9. 设置与锁屏弹窗
     ========================================================= */
     const settingsModal = document.getElementById('settings-modal');
     const selectUploadMode = document.getElementById('select-upload-mode');
+    const selectChinaCdnMode = document.getElementById('select-china-cdn-mode');
     const inputCustomDomain = document.getElementById('input-custom-domain');
     const inputNewPassword = document.getElementById('input-new-password');
 
     function openSettings() {
         updateStorageQuotaUI();
+        updateThumbAccelStatusUI();
         if (selectUploadMode) selectUploadMode.value = uploadMode;
+        if (selectChinaCdnMode) selectChinaCdnMode.value = chinaCdnMode;
         if (inputCustomDomain) inputCustomDomain.value = customDomain;
         if (inputNewPassword) inputNewPassword.value = '';
         settingsModal?.classList.add('open');
@@ -2394,6 +2551,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     document.getElementById('btn-settings')?.addEventListener('click', openSettings);
+    document.getElementById('mob-btn-settings')?.addEventListener('click', openSettings);
     document.getElementById('settings-close')?.addEventListener('click', closeSettings);
     settingsModal?.addEventListener('click', (e) => {
         if (e.target === settingsModal) closeSettings();
@@ -2401,8 +2559,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById('btn-save-settings')?.addEventListener('click', async () => {
         uploadMode = selectUploadMode?.value || 'original';
+        chinaCdnMode = selectChinaCdnMode?.value || 'smart-queue';
         customDomain = (inputCustomDomain?.value || '').trim();
         localStorage.setItem(STORAGE_KEYS.UPLOAD_MODE, uploadMode);
+        localStorage.setItem(STORAGE_KEYS.CHINA_CDN_MODE, chinaCdnMode);
         localStorage.setItem(STORAGE_KEYS.CUSTOM_DOMAIN, customDomain);
 
         const nextPwd = (inputNewPassword?.value || '').trim();
@@ -2423,13 +2583,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 adminToken = nextPwd;
                 localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
                 if (inputNewPassword) inputNewPassword.value = '';
-                toast('新密码已加密保存至云端存储桶');
+                toast('新密码已保存');
             } catch {
-                toast('网络错误，密码修改失败');
+                toast('网络错误');
                 return;
             }
         } else {
-            toast('空间设置已保存');
+            toast('设置已保存');
         }
 
         closeSettings();
@@ -2439,6 +2599,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById('btn-lock-now')?.addEventListener('click', () => {
         adminToken = '';
         localStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
+        localStorage.removeItem(STORAGE_KEYS.CLOUD_SNAPSHOT);
         if (lockInput) lockInput.value = '';
         closeSettings();
         showLockUI();
@@ -2465,10 +2626,10 @@ document.addEventListener("DOMContentLoaded", () => {
     probeServerStatus();
 
     if (adminToken) {
-        updateSiteLoader(75, '正在自动验证密钥并同步影像库...');
+        updateSiteLoader(75, 'LOADING');
         tryUnlockAndLoad(adminToken, true);
     } else {
-        updateSiteLoader(85, '空间已就绪 · 请验证访问密码');
+        updateSiteLoader(90, 'READY');
         showLockUI();
     }
 });

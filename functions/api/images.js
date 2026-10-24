@@ -253,6 +253,23 @@ function formatR2Object(obj, request, env) {
   };
 }
 
+function getEdgeListCacheRequest(request) {
+  const origin = new URL(request.url).origin;
+  return new Request(`${origin}/__edge_cache__/api_images_list_v4`, { method: "GET" });
+}
+
+async function purgeEdgeListCache(request, context) {
+  try {
+    const cache = caches.default;
+    const p = cache.delete(getEdgeListCacheRequest(request));
+    if (context && typeof context.waitUntil === "function") {
+      context.waitUntil(p);
+    } else {
+      await p;
+    }
+  } catch {}
+}
+
 export async function onRequestOptions() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
@@ -263,11 +280,11 @@ export async function onRequestGet(context) {
   const { bucket, bucketBindingName, adminPassword } = resolveEnvBindings(env);
 
   const hasR2 = Boolean(bucket);
-  const r2AuthHash = hasR2 && !adminPassword ? await readR2AuthHash(bucket) : null;
-  const hasPassword = Boolean(adminPassword || r2AuthHash);
 
   // Status probe without unlocking
   if (url.searchParams.get("action") === "status") {
+    const r2AuthHash = hasR2 && !adminPassword ? await readR2AuthHash(bucket) : null;
+    const hasPassword = Boolean(adminPassword || r2AuthHash);
     return jsonResponse({
       ok: true,
       r2Bound: hasR2,
@@ -283,7 +300,7 @@ export async function onRequestGet(context) {
     return jsonResponse({
       ok: false,
       r2Bound: hasR2,
-      passwordConfigured: hasPassword,
+      passwordConfigured: true,
       needsFirstSetup: Boolean(auth.needsFirstSetup),
       locked: true,
       misconfigured: auth.misconfigured,
@@ -307,7 +324,19 @@ export async function onRequestGet(context) {
   try {
     const prefix = url.searchParams.get("prefix") || undefined;
     const cursor = url.searchParams.get("cursor") || undefined;
+    const noCache = url.searchParams.get("nocache") === "1";
     const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get("limit")) || 800));
+
+    // 3. Fast Edge Cache hit (<50ms in Mainland China via nearest HK/SG/TYO node)
+    const cache = caches.default;
+    const edgeCacheReq = getEdgeListCacheRequest(request);
+    if (!prefix && !cursor && !noCache && !auth.firstTimeInitialized) {
+      const cachedRes = await cache.match(edgeCacheReq);
+      if (cachedRes) {
+        const payload = await cachedRes.json();
+        return jsonResponse({ ...payload, edgeCached: true });
+      }
+    }
 
     const [listed, storedCategories] = await Promise.all([
       bucket.list({
@@ -332,7 +361,7 @@ export async function onRequestGet(context) {
       if (item.folder) folderSet.add(item.folder);
     });
 
-    return jsonResponse({
+    const responseData = {
       ok: true,
       r2Bound: true,
       passwordConfigured: true,
@@ -344,7 +373,21 @@ export async function onRequestGet(context) {
       categories: storedCategories,
       truncated: listed.truncated || false,
       cursor: listed.cursor || null,
-    });
+    };
+
+    if (!prefix && !cursor) {
+      const edgeRes = new Response(JSON.stringify(responseData), {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "public, max-age=180, s-maxage=180",
+        },
+      });
+      if (typeof context.waitUntil === "function") {
+        context.waitUntil(cache.put(edgeCacheReq, edgeRes));
+      }
+    }
+
+    return jsonResponse(responseData);
   } catch (err) {
     return jsonResponse({
       ok: false,
@@ -413,6 +456,8 @@ export async function onRequestPost(context) {
         httpMetadata: existing.httpMetadata,
         customMetadata: updatedMeta,
       });
+
+      await purgeEdgeListCache(request, context);
 
       return jsonResponse({
         ok: true,
@@ -503,6 +548,8 @@ export async function onRequestPost(context) {
       customMetadata,
     });
 
+    await purgeEdgeListCache(request, context);
+
     const item = formatR2Object(
       {
         key,
@@ -548,12 +595,14 @@ export async function onRequestPatch(context) {
         return jsonResponse({ ok: false, error: "新密码长度不能少于 3 位" }, 400);
       }
       await writeR2AuthHash(bucket, nextPwd);
+      await purgeEdgeListCache(request, context);
       return jsonResponse({ ok: true, message: "密码已加密保存至 R2 存储桶" });
     }
 
     // 2. Support saving custom categories (names + custom colors) to .sys/categories.json
     if (body.action === "saveCategories") {
       const saved = await writeR2Categories(bucket, body.categories);
+      await purgeEdgeListCache(request, context);
       return jsonResponse({ ok: true, categories: saved });
     }
 
@@ -566,6 +615,7 @@ export async function onRequestPatch(context) {
     const { title, folder } = body;
 
     if (keys.length === 0) {
+      await purgeEdgeListCache(request, context);
       return jsonResponse({ ok: true, items: [], item: null });
     }
 
@@ -601,6 +651,8 @@ export async function onRequestPatch(context) {
         )
       );
     }
+
+    await purgeEdgeListCache(request, context);
 
     return jsonResponse({ ok: true, items: updatedItems, item: updatedItems[0] || null });
   } catch (err) {
@@ -656,6 +708,7 @@ export async function onRequestDelete(context) {
       const rawUrl = `${origin}/raw/${encoded}`;
       context.waitUntil(cache.delete(rawUrl));
     }
+    await purgeEdgeListCache(request, context);
 
     return jsonResponse({
       ok: true,

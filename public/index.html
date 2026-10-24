@@ -3,47 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>向 · 私人影像馆</title>
-    <link rel="icon" href="https://cllli.oss-cn-beijing.aliyuncs.com/logo/logo.svg" type="image/svg+xml">
-    <!-- 国内极速非阻塞字体镜像加载：0ms 首屏渲染，绝不卡白屏 -->
-    <link rel="preconnect" href="https://fonts.loli.net" crossorigin>
-    <link rel="stylesheet" href="https://fonts.loli.net/css2?family=Noto+Serif+SC:wght@400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap" media="print" onload="this.media='all'">
+    <title>IMG</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' rx='7' fill='%23111115'/%3E%3Ccircle cx='11.5' cy='11.5' r='2.5' fill='%23fff'/%3E%3Cpath d='M6 24l7-8 5 5.5 4-4.5 4 7H6z' fill='%23fff' opacity='0.9'/%3E%3C/svg%3E" type="image/svg+xml">
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body class="locked">
 
+    <!-- 环境光氛围底幕 (毛玻璃折射光源) -->
+    <div class="ambient-canvas" aria-hidden="true">
+        <div class="ambient-orb orb-1"></div>
+        <div class="ambient-orb orb-2"></div>
+        <div class="ambient-orb orb-3"></div>
+    </div>
+
     <!-- =========================================================
-         0-A. 网站启动序幕加载动画 (Site Boot Curtain Loader)
+         0-A. 网站启动毛玻璃加载层 (Frosted Preloader)
     ========================================================= -->
     <div id="site-loader" class="site-loader">
-        <div class="loader-center">
-            <div class="loader-aperture-wrap">
-                <svg class="loader-aperture-svg" viewBox="0 0 80 80" aria-hidden="true">
-                    <circle class="loader-ring-bg" cx="40" cy="40" r="34" />
-                    <circle class="loader-ring-spin" cx="40" cy="40" r="34" />
-                    <circle class="loader-ring-inner" cx="40" cy="40" r="22" />
+        <div class="loader-glass-pill">
+            <div class="loader-spinner-ring">
+                <svg viewBox="0 0 48 48">
+                    <circle class="ring-bg" cx="24" cy="24" r="19" />
+                    <circle class="ring-fg" cx="24" cy="24" r="19" />
                 </svg>
-                <span class="loader-core-diamond"></span>
             </div>
-            <div class="loader-brand-title">向 · 私人影像馆</div>
-            <div class="loader-status-text" id="site-loader-text">正在连接云端视觉空间...</div>
-            <div class="loader-progress-track">
-                <div class="loader-progress-bar" id="site-loader-bar"></div>
+            <span class="loader-logo">IMG</span>
+            <div class="loader-bar-wrap">
+                <div class="loader-bar-fill" id="site-loader-bar"></div>
             </div>
         </div>
     </div>
 
     <!-- =========================================================
-         0-B. 首屏光学星环密码门禁 (Optical Ring Lock Vault)
-         支持打字星环旋转充能、脉冲波纹、密码显隐与丝滑揭幕过渡
+         0-B. 毛玻璃密码门禁 (Frosted Glass Lock Card)
     ========================================================= -->
     <div id="lock-screen" class="lock-screen">
-        <!-- 环境呼吸光晕与建筑感微网格 -->
-        <div class="lock-ambient-grid" aria-hidden="true"></div>
-        <div class="lock-ambient-glow" id="lock-ambient-glow" aria-hidden="true"></div>
-
-        <div class="lock-box" id="lock-box">
-            <!-- 光学星环徽标：随输入字符数动态旋转并点亮圆环进度 -->
+        <div class="lock-glass-card" id="lock-box">
+            <!-- 动态光学圆环 + IMG 标志 -->
             <div class="lock-emblem-stage" id="lock-emblem-stage">
                 <span class="lock-ripple-ring" id="lock-ripple-ring"></span>
                 <svg class="lock-aperture-svg" id="lock-aperture-svg" viewBox="0 0 88 88" aria-hidden="true">
@@ -51,162 +47,113 @@
                     <circle class="lock-ring-orbit" id="lock-ring-orbit" cx="44" cy="44" r="28" />
                     <circle class="lock-ring-progress" id="lock-ring-progress" cx="44" cy="44" r="36" />
                 </svg>
-                <span class="lock-mark" id="lock-mark"></span>
+                <span class="lock-logo-core" id="lock-mark">IMG</span>
             </div>
-
-            <h1 class="lock-brand">向 · 私人影像馆</h1>
-            <p class="lock-subtitle">私密云端视觉典藏 · 请输入访问密码</p>
 
             <form id="lock-form" class="lock-form" autocomplete="off">
                 <div class="lock-input-group" id="lock-input-group">
-                    <input type="password" id="lock-password-input" class="lock-input" placeholder="请输入访问密码..." autofocus>
-                    <button type="button" id="lock-toggle-vis" class="lock-vis-btn" title="显示/隐藏密码" aria-label="显示或隐藏密码">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <input type="password" id="lock-password-input" class="lock-input" placeholder="输入密码" autofocus>
+                    <button type="button" id="lock-toggle-vis" class="lock-vis-btn" title="显示/隐藏" aria-label="显示密码">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/>
                             <circle cx="12" cy="12" r="3"/>
                         </svg>
                     </button>
-                    <button type="submit" id="lock-submit-btn" class="lock-submit" title="验证并进入空间" aria-label="解锁进入">
+                    <button type="submit" id="lock-submit-btn" class="lock-submit" aria-label="进入">
                         <span class="submit-arrow">→</span>
                         <span class="submit-spinner"></span>
                     </button>
-                    <span class="lock-focus-line" id="lock-focus-line"></span>
                 </div>
-                <!-- 灵动按键能量指示胶囊 -->
                 <div class="lock-key-dots" id="lock-key-dots" aria-hidden="true"></div>
                 <div class="lock-error" id="lock-error"></div>
             </form>
-
-            <div class="lock-footer-status">
-                <span class="lock-pulse-dot" id="lock-pulse-dot"></span>
-                <span class="lock-footer-hint" id="lock-footer-hint">正在检测云端存储节点状态...</span>
-            </div>
         </div>
     </div>
 
-    <!-- 全局文件隐藏选择器 -->
+    <!-- 全局文件选择器 -->
     <input type="file" id="file-input" multiple accept="image/*" hidden>
 
-    <!-- 全屏拖拽上传轻盈遮罩 -->
+    <!-- 拖拽上传毛玻璃遮罩 -->
     <div id="drop-overlay" class="drop-overlay" aria-hidden="true">
-        <div class="drop-frame">
+        <div class="drop-glass-card">
             <span class="drop-plus">+</span>
-            <p class="drop-title">松开鼠标 · 立即上传归档</p>
-            <span class="drop-sub" id="drop-target-hint">将上传至当前分类</span>
+            <p class="drop-title" id="drop-target-hint">松开上传</p>
         </div>
     </div>
 
     <!-- =========================================================
-         1. 双层悬浮毛玻璃导航架构 (Dual-Tier Floating Glass Header)
-            上层：品牌标识 + 搜索 + 缩略图缩放 + 容量仪表 + 批量/上传/设置
-            下层：专属彩色分类导览栏 (支持拖拽归档、新建分类、分类管理)
+         1. 悬浮毛玻璃顶栏 (Floating Frosted Glass Dock)
     ========================================================= -->
-    <header class="top-header-shell" id="top-bar">
-        <!-- 第一层：主导航与全局控制栏 -->
-        <div class="top-bar-main">
-            <div class="bar-left">
-                <a href="/" class="brand" aria-label="向 · 影像馆">
-                    <span class="brand-mark"></span>
-                    <span class="brand-name">向 · 影像馆</span>
-                    <span class="brand-tag" id="storage-stat" title="当前视图照片数量">0</span>
+    <header class="top-glass-header" id="top-bar">
+        <div class="glass-dock">
+            <!-- 左侧：IMG 标志 + 计数 -->
+            <div class="dock-brand-group">
+                <a href="/" class="brand" aria-label="IMG">
+                    <span class="brand-name">IMG</span>
+                    <span class="brand-count" id="storage-stat">0</span>
                 </a>
+            </div>
 
+            <!-- 中间：毛玻璃分类导航轨 + 分类按钮 -->
+            <div class="dock-categories-group">
+                <nav class="folder-tabs" id="folder-tabs" aria-label="分类">
+                    <button class="tab-item active" data-folder="all">全部</button>
+                </nav>
+                <button type="button" class="dock-cat-add" id="btn-new-folder" title="分类管理">+</button>
+            </div>
+
+            <!-- 右侧：搜索 + 缩放 + 容量 + 操作 -->
+            <div class="dock-tools-group">
                 <div class="search-wrap">
-                    <svg class="search-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg class="search-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="7"></circle>
                         <line x1="20" y1="20" x2="16.2" y2="16.2"></line>
                     </svg>
-                    <input type="text" id="search-input" class="search-input" placeholder="搜索标题、分类、相机镜头..." autocomplete="off">
-                    <button type="button" id="search-clear-btn" class="search-clear-btn" hidden title="清空搜索">✕</button>
+                    <input type="text" id="search-input" class="search-input" placeholder="搜索" autocomplete="off">
+                    <button type="button" id="search-clear-btn" class="search-clear-btn" hidden>✕</button>
                 </div>
-            </div>
 
-            <div class="bar-right">
-                <!-- 仿 iPhone 相册：缩略图尺寸无级调节器 -->
-                <div class="zoom-scaler" title="调节缩略图列数与大小">
-                    <button type="button" class="zoom-step-btn" id="btn-zoom-out" aria-label="缩小缩略图">−</button>
+                <div class="zoom-scaler" title="列数缩放">
+                    <button type="button" class="zoom-step-btn" id="btn-zoom-out">−</button>
                     <input type="range" id="zoom-slider" class="zoom-slider" min="1" max="5" step="1" value="3">
-                    <button type="button" class="zoom-step-btn" id="btn-zoom-in" aria-label="放大缩略图">+</button>
+                    <button type="button" class="zoom-step-btn" id="btn-zoom-in">+</button>
                 </div>
 
-                <!-- R2 10GB 免费存储空间实时仪表 -->
-                <button type="button" class="quota-pill" id="btn-quota-detail" title="点击查看云端存储容量详情 (免费额度 10 GB)">
-                    <div class="quota-text-row">
-                        <span class="quota-used" id="quota-pill-text">0 MB / 10 GB</span>
-                    </div>
+                <button type="button" class="quota-pill" id="btn-quota-detail" title="存储空间">
+                    <span class="quota-used" id="quota-pill-text">0 MB</span>
                     <div class="quota-mini-track">
                         <div class="quota-mini-fill" id="quota-mini-fill"></div>
                     </div>
                 </button>
 
-                <button class="ghost-btn" id="btn-batch-toggle" title="开启或退出批量选择管理 (快捷键 B)">
-                    <span>批量管理</span>
-                </button>
-
-                <button class="text-btn" id="btn-upload" title="上传照片至当前分类 (支持拖拽或粘贴)">
-                    <span>+ 上传影像</span>
-                </button>
-
-                <button class="icon-btn" id="btn-settings" title="空间设置与存储统计" aria-label="空间设置">
-                    <span class="status-dot online" id="auth-dot"></span>
-                </button>
-            </div>
-        </div>
-
-        <!-- 第二层：专属彩色分类导览与归档栏 -->
-        <div class="category-ribbon-bar">
-            <div class="folder-nav-wrap">
-                <nav class="folder-tabs" id="folder-tabs" aria-label="影像分类导航">
-                    <button class="tab-item active" data-folder="all">全部影像</button>
-                </nav>
-            </div>
-
-            <div class="category-actions-right">
-                <span class="collection-live-stat" id="editorial-stat-summary">共 0 幅影像 · 0 MB</span>
-                <span class="collection-stat-sep">·</span>
-                <span class="collection-grid-badge" id="editorial-grid-badge">4 列视图</span>
-                <button type="button" class="cat-tool-btn" id="btn-new-folder" title="快速新建分类">
-                    <span>+ 新建分类</span>
-                </button>
-                <button type="button" class="cat-tool-btn subtle" id="btn-manage-folders" title="管理所有分类（改名、配色、删除）">
-                    <span>分类管理</span>
+                <button type="button" class="glass-btn" id="btn-batch-toggle" title="多选 (B)">多选</button>
+                <button type="button" class="glass-btn primary" id="btn-upload" title="上传">上传</button>
+                <button type="button" class="glass-icon-btn" id="btn-settings" title="设置" aria-label="设置">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
                 </button>
             </div>
         </div>
     </header>
 
-    <!-- 顶部极细上传与同步进度条 -->
+    <!-- 顶部毛玻璃进度胶囊 -->
     <div class="upload-ribbon" id="upload-ribbon" hidden>
         <div class="ribbon-track">
             <div class="ribbon-bar" id="ribbon-bar"></div>
         </div>
         <div class="ribbon-info">
-            <span id="ribbon-text">正在上传影像...</span>
+            <span id="ribbon-text">上传中...</span>
             <span id="ribbon-percent">0%</span>
         </div>
     </div>
 
     <!-- =========================================================
-         2. 主画布：呼吸骨架屏 + 真实宽高比无裁切时间线画廊
+         2. 主画廊：纯净无冗余真实比例瀑布流
     ========================================================= -->
     <main class="space-main" id="space-main">
-        <!-- 当前分类抬头提示条 (当筛选特定分类或搜索时展示) -->
-        <section class="editorial-banner" id="editorial-banner">
-            <div class="editorial-left">
-                <span class="editorial-eyebrow" id="editorial-eyebrow">按时间线归档呈现</span>
-                <div class="editorial-title-row">
-                    <span class="editorial-cat-dot" id="editorial-cat-dot"></span>
-                    <h2 class="editorial-title" id="editorial-title">全部影像</h2>
-                </div>
-            </div>
-            <div class="editorial-right">
-                <button type="button" class="editorial-upload-target-btn" id="btn-upload-to-current" title="直接上传照片到此分类">
-                    <span id="upload-to-current-label">上传至「默认归档」</span>
-                </button>
-            </div>
-        </section>
-
-        <!-- 云端同步与首屏呼吸流光骨架屏 -->
+        <!-- 骨架屏 -->
         <div class="skeleton-stage" id="skeleton-stage" hidden>
             <div class="skeleton-grid">
                 <div class="skeleton-card" style="aspect-ratio: 3/2;"></div>
@@ -218,37 +165,33 @@
 
         <!-- 空状态 -->
         <div class="empty-stage" id="empty-stage" hidden>
-            <div class="empty-box" id="empty-drop-trigger">
+            <div class="empty-glass-box" id="empty-drop-trigger">
                 <span class="empty-plus">+</span>
-                <p class="empty-title">当前分类暂无影像 · 点击或拖拽照片上传</p>
-                <span class="empty-sub">支持 JPG · PNG · WebP · GIF · SVG 真实比例无损时间线归档</span>
+                <p class="empty-title">点击或拖拽上传</p>
             </div>
         </div>
 
-        <!-- 时间线分组流容器 -->
+        <!-- 时间线瀑布流 -->
         <div class="timeline-stream" id="timeline-stream"></div>
     </main>
 
-    <!-- 单张卡片快捷切换分类悬浮气泡菜单 -->
+    <!-- 单张卡片快捷切换分类毛玻璃菜单 -->
     <div id="quick-cat-popover" class="quick-cat-popover" hidden>
-        <div class="popover-head">将此影像归类至</div>
         <div class="popover-list" id="quick-cat-list"></div>
-        <button type="button" class="popover-new-btn" id="quick-cat-new-btn">+ 新建分类并移入</button>
+        <button type="button" class="popover-new-btn" id="quick-cat-new-btn">+ 新建分类</button>
     </div>
 
     <!-- =========================================================
-         3. 移动端专属底部玻璃悬浮操作栏
+         3. 移动端底部悬浮毛玻璃栏
     ========================================================= -->
-    <nav class="mobile-bottom-bar" id="mobile-bottom-bar" aria-label="移动端快捷栏">
+    <nav class="mobile-bottom-bar" id="mobile-bottom-bar" aria-label="快捷栏">
         <div class="mob-zoom-group">
-            <button type="button" class="mob-zoom-btn" id="mob-zoom-out" aria-label="密集小图">−</button>
+            <button type="button" class="mob-zoom-btn" id="mob-zoom-out">−</button>
             <span class="mob-zoom-label" id="mob-zoom-label">3列</span>
-            <button type="button" class="mob-zoom-btn" id="mob-zoom-in" aria-label="大图预览">+</button>
+            <button type="button" class="mob-zoom-btn" id="mob-zoom-in">+</button>
         </div>
 
-        <button type="button" class="mob-upload-fab" id="mob-btn-upload">
-            <span>+ 上传影像</span>
-        </button>
+        <button type="button" class="mob-upload-fab" id="mob-btn-upload">+ 上传</button>
 
         <div class="mob-right-group">
             <button type="button" class="mob-tool-btn" id="mob-btn-cat">分类</button>
@@ -258,11 +201,11 @@
     </nav>
 
     <!-- =========================================================
-         4. 底部悬浮批量管理控制台
+         4. 底部悬浮毛玻璃批量栏
     ========================================================= -->
     <div class="selection-dock" id="selection-dock" hidden>
         <div class="dock-left">
-            <span class="sel-count" id="sel-count">已选 0 项</span>
+            <span class="sel-count" id="sel-count">0</span>
             <button type="button" class="dock-link" id="btn-sel-all">全选</button>
             <button type="button" class="dock-link" id="btn-sel-invert">反选</button>
         </div>
@@ -270,67 +213,60 @@
         <span class="sel-sep"></span>
 
         <div class="dock-center">
-            <div class="dock-move-group">
-                <select id="batch-move-select" class="dock-select" title="将选中影像批量移动到指定分类">
-                    <option value="">移动分类至...</option>
-                </select>
-            </div>
-            <button type="button" class="dock-action" id="btn-sel-copy-url">复制直链</button>
-            <button type="button" class="dock-action" id="btn-sel-copy-md">Markdown</button>
-            <button type="button" class="dock-action" id="btn-sel-copy-html">HTML</button>
-            <button type="button" class="dock-action" id="btn-sel-download">批量下载</button>
-            <button type="button" class="dock-action danger" id="btn-sel-delete">批量删除</button>
+            <select id="batch-move-select" class="dock-select">
+                <option value="">移动至...</option>
+            </select>
+            <button type="button" class="dock-action" id="btn-sel-copy-url">直链</button>
+            <button type="button" class="dock-action" id="btn-sel-copy-md">MD</button>
+            <button type="button" class="dock-action" id="btn-sel-download">下载</button>
+            <button type="button" class="dock-action danger" id="btn-sel-delete">删除</button>
         </div>
 
-        <button type="button" class="dock-close" id="btn-sel-clear" title="退出批量管理 (Esc)">✕</button>
+        <button type="button" class="dock-close" id="btn-sel-clear">✕</button>
     </div>
 
     <!-- =========================================================
-         5. 零卡顿极速详情检视层 (Zero-Jank Instant Viewer)
+         5. 毛玻璃大图检视层 (Frosted Glass Viewer)
     ========================================================= -->
     <div class="viewer-backdrop" id="viewer-modal" aria-hidden="true">
         <div class="viewer-layout">
-            <!-- 左侧：纯净大图预览区 -->
             <div class="viewer-stage" id="viewer-stage">
-                <button type="button" class="hd-badge-btn" id="btn-load-hd" hidden title="点击加载未压缩原始高清大图">查看原图</button>
-                <button type="button" class="mobile-viewer-close" id="mobile-viewer-close" aria-label="关闭">✕</button>
-                <button class="nav-arrow prev" id="viewer-prev" aria-label="上一张">‹</button>
+                <button type="button" class="hd-badge-btn" id="btn-load-hd" hidden>原图</button>
+                <button type="button" class="mobile-viewer-close" id="mobile-viewer-close">✕</button>
+                <button class="nav-arrow prev" id="viewer-prev">‹</button>
                 <img id="viewer-img" class="viewer-img" alt="">
-                <button class="nav-arrow next" id="viewer-next" aria-label="下一张">›</button>
+                <button class="nav-arrow next" id="viewer-next">›</button>
             </div>
 
-            <!-- 右侧 / 移动端底部抽屉：信息与操作栏 -->
             <aside class="viewer-sidebar">
                 <div class="sidebar-top">
                     <div class="file-header">
-                        <input type="text" id="meta-title-input" class="title-input" placeholder="未命名影像" title="点击修改影像标题">
-                        <button class="viewer-close" id="viewer-close" title="关闭 (Esc)">✕</button>
+                        <input type="text" id="meta-title-input" class="title-input" placeholder="标题">
+                        <button class="viewer-close" id="viewer-close">✕</button>
                     </div>
 
                     <div class="file-quick-stats" id="meta-quick-stats">
-                        <span id="stat-dimensions">— × —</span>
+                        <span id="stat-dimensions">—</span>
                         <span>·</span>
                         <span id="stat-size">—</span>
                         <span>·</span>
                         <span id="stat-date">—</span>
                     </div>
 
-                    <!-- 所属分类编辑与快捷点选胶囊 -->
                     <div class="meta-row-field">
-                        <label class="field-label">所属分类（点击下方标签可快速归类）</label>
+                        <label class="field-label">分类</label>
                         <div class="folder-edit-group">
                             <span class="folder-color-preview" id="viewer-folder-dot"></span>
-                            <input type="text" id="meta-folder-input" class="minimal-input" placeholder="输入或选择分类名称">
-                            <button type="button" id="btn-save-meta" class="minimal-save-btn">保存修改</button>
+                            <input type="text" id="meta-folder-input" class="minimal-input" placeholder="分类">
+                            <button type="button" id="btn-save-meta" class="minimal-save-btn">保存</button>
                         </div>
                         <div class="viewer-cat-chips" id="viewer-cat-chips"></div>
                     </div>
 
-                    <!-- 一键复制外链 (点击整行即复制) -->
                     <div class="links-block">
-                        <label class="field-label">快捷外链（点击整行即可复制）</label>
+                        <label class="field-label">外链</label>
                         <button type="button" class="copy-line" data-format="url">
-                            <span class="copy-tag">直链</span>
+                            <span class="copy-tag">URL</span>
                             <span class="copy-val" id="val-url"></span>
                         </button>
                         <button type="button" class="copy-line" data-format="md">
@@ -343,110 +279,108 @@
                         </button>
                     </div>
 
-                    <!-- 光学拍摄参数 EXIF -->
                     <div class="exif-block" id="exif-block">
-                        <label class="field-label">相机与光学参数</label>
+                        <label class="field-label">EXIF</label>
                         <div class="exif-list" id="exif-list"></div>
                     </div>
                 </div>
 
                 <div class="sidebar-bottom">
-                    <a id="btn-download" href="#" download target="_blank" class="bottom-action">下载原图</a>
-                    <button type="button" id="btn-delete-single" class="bottom-action danger">删除影像</button>
+                    <a id="btn-download" href="#" download target="_blank" class="bottom-action">下载</a>
+                    <button type="button" id="btn-delete-single" class="bottom-action danger">删除</button>
                 </div>
             </aside>
         </div>
     </div>
 
     <!-- =========================================================
-         6. 分类新建与管理工作台弹窗 (Category Studio Modal)
-            支持自定义分类名称、10 色专属色板挑选、重命名、修改颜色与删除归并
+         6. 分类管理毛玻璃弹窗 (Category Glass Modal)
     ========================================================= -->
     <div class="settings-backdrop" id="category-modal" aria-hidden="true">
-        <div class="settings-card category-studio-card">
+        <div class="settings-card">
             <div class="settings-head">
-                <span class="settings-title">影像分类管理工作台</span>
-                <button class="viewer-close" id="category-modal-close" title="关闭">✕</button>
+                <span class="settings-title">分类</span>
+                <button class="viewer-close" id="category-modal-close">✕</button>
             </div>
 
-            <!-- 新建分类区 -->
             <form id="form-create-category" class="cat-create-box" autocomplete="off">
-                <label class="field-label">新建分类 · 自定义名称与专属标识色</label>
                 <div class="cat-create-row">
                     <span class="cat-selected-color-dot" id="new-cat-color-preview"></span>
-                    <input type="text" id="input-new-cat-name" class="minimal-input" placeholder="输入分类名称（如：旅行纪实、人像、胶片、2026）" maxlength="32">
-                    <button type="submit" class="minimal-save-btn primary-create-btn">创建分类</button>
+                    <input type="text" id="input-new-cat-name" class="minimal-input" placeholder="新建分类名称" maxlength="32">
+                    <button type="submit" class="minimal-save-btn primary-create-btn">添加</button>
                 </div>
                 <div class="cat-palette-row" id="new-cat-palette"></div>
             </form>
 
-            <!-- 已有分类管理列表 -->
             <div class="cat-manage-section">
-                <div class="cat-manage-header">
-                    <span class="field-label">已有分类列表（点击色点可换色，支持改名与删除）</span>
-                    <span class="cat-total-badge" id="cat-modal-count">0 个分类</span>
-                </div>
                 <div class="cat-manage-list" id="cat-manage-list"></div>
             </div>
         </div>
     </div>
 
     <!-- =========================================================
-         7. 空间设置与云端存储容量监控弹窗
+         7. 设置与空间毛玻璃弹窗 (Settings Glass Modal)
     ========================================================= -->
     <div class="settings-backdrop" id="settings-modal" aria-hidden="true">
         <div class="settings-card">
             <div class="settings-head">
-                <span class="settings-title">空间设置与云端存储容量</span>
+                <span class="settings-title">设置</span>
                 <button class="viewer-close" id="settings-close">✕</button>
             </div>
 
-            <!-- R2 可用空间可视化面板 -->
             <div class="storage-meter-box">
                 <div class="meter-header">
-                    <span class="meter-label">Cloudflare R2 云端存储配额 (10 GB)</span>
-                    <span class="meter-pct" id="meter-pct">0.0%</span>
+                    <span>存储空间 (10 GB)</span>
+                    <span class="meter-pct" id="meter-pct">0%</span>
                 </div>
-
                 <div class="meter-bar-multi" id="meter-bar-multi"></div>
-
                 <div class="meter-stats-row">
-                    <span>已用空间：<strong id="meter-used-val">0 MB</strong></span>
-                    <span>剩余可用：<strong id="meter-free-val">10.00 GB</strong></span>
+                    <span>已用 <strong id="meter-used-val">0 MB</strong></span>
+                    <span>可用 <strong id="meter-free-val">10 GB</strong></span>
                 </div>
-
                 <div class="meter-cat-breakdown" id="meter-cat-breakdown"></div>
             </div>
 
-            <div class="settings-status" id="r2-conn-status">正在检测云端连接状态...</div>
-
-            <div class="settings-field">
-                <label class="field-label">上传画质与压缩策略</label>
-                <select id="select-upload-mode" class="minimal-input">
-                    <option value="original">保留原图无损上传 + 自动生成极速预览图（推荐）</option>
-                    <option value="webp-4k">自动转 WebP 高清格式 · 最大 4K (3840px)</option>
-                    <option value="webp-2k">自动转 WebP 轻量格式 · 最大 2.5K (2560px)</option>
+            <div class="storage-meter-box china-accel-box">
+                <div class="china-accel-row">
+                    <div>
+                        <div class="meter-label-strong">国内加载加速</div>
+                        <span class="china-accel-desc" id="thumb-accel-status">极速缩略图检测中</span>
+                    </div>
+                    <button type="button" class="minimal-save-btn" id="btn-optimize-all-thumbs">一键生成缩略图</button>
+                </div>
+                <select id="select-china-cdn-mode" class="minimal-input">
+                    <option value="smart-queue">智能队列 + R2 缩略图 + 本地缓存（默认）</option>
+                    <option value="wsrv-cdn">全球边缘网关压缩加速 (wsrv.nl)</option>
                 </select>
             </div>
 
             <div class="settings-field">
-                <label class="field-label">自定义外链域名（可选）</label>
-                <input type="text" id="input-custom-domain" class="minimal-input" placeholder="例如 https://img.xiangvisuals.com">
+                <label class="field-label">上传策略</label>
+                <select id="select-upload-mode" class="minimal-input">
+                    <option value="original">原图 + 自动极速缩略图</option>
+                    <option value="webp-4k">WebP · 4K</option>
+                    <option value="webp-2k">WebP · 2.5K</option>
+                </select>
             </div>
 
             <div class="settings-field">
-                <label class="field-label">修改访问密码（留空则保持原密码不变）</label>
-                <input type="password" id="input-new-password" class="minimal-input" placeholder="输入新密码将加密保存至云端存储桶" autocomplete="new-password">
+                <label class="field-label">自定义域名</label>
+                <input type="text" id="input-custom-domain" class="minimal-input" placeholder="https://...">
+            </div>
+
+            <div class="settings-field">
+                <label class="field-label">修改密码</label>
+                <input type="password" id="input-new-password" class="minimal-input" placeholder="留空不修改" autocomplete="new-password">
             </div>
 
             <div class="settings-foot">
-                <button type="button" class="bottom-action danger" id="btn-lock-now">立即锁定空间</button>
-                <button type="button" class="bottom-action primary" id="btn-save-settings">保存设置</button>
+                <button type="button" class="bottom-action danger" id="btn-lock-now">锁定</button>
+                <button type="button" class="bottom-action primary" id="btn-save-settings">保存</button>
             </div>
         </div>
     </div>
 
-    <!-- 极简轻提示 -->
     <div id="toast-box" class="toast-box"></div>
 
     <script src="/js/app.js"></script>
