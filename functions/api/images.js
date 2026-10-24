@@ -492,9 +492,34 @@ export async function onRequestPost(context) {
 
     const originalName = (file.name || "image.jpg").toString();
     const extMatch = originalName.match(/\.([a-zA-Z0-9]+)$/);
-    const mimeType = file.type || "image/jpeg";
+    const extMimeMap = {
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      jpe: "image/jpeg",
+      png: "image/png",
+      webp: "image/webp",
+      avif: "image/avif",
+      heic: "image/heic",
+      heif: "image/heif",
+      hif: "image/heif",
+      jxl: "image/jxl",
+      tif: "image/tiff",
+      tiff: "image/tiff",
+      dng: "image/x-adobe-dng",
+      hdr: "image/vnd.radiance",
+      exr: "image/x-exr",
+      gif: "image/gif",
+      svg: "image/svg+xml",
+      bmp: "image/bmp",
+      ico: "image/x-icon",
+    };
+    const rawExt = extMatch ? extMatch[1].toLowerCase() : "";
+    const mimeType =
+      (file.type && file.type !== "application/octet-stream" ? file.type : "") ||
+      extMimeMap[rawExt] ||
+      "image/jpeg";
     const fallbackExt = mimeType.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
-    const ext = (extMatch ? extMatch[1] : fallbackExt).toLowerCase();
+    const ext = (rawExt || fallbackExt).toLowerCase();
 
     const customSlug = (formData.get("customName") || "")
       .toString()

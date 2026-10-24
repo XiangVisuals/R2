@@ -20,12 +20,28 @@ document.addEventListener("DOMContentLoaded", () => {
         UPLOAD_MODE: 'xiang_r2_upload_mode',
         CHINA_CDN_MODE: 'xiang_r2_china_cdn_mode',
         HDR_MODE: 'xiang_r2_hdr_mode',
+        THEME: 'xiang_r2_theme',
         LOCAL_ITEMS: 'xiang_r2_local_items',
         CLOUD_SNAPSHOT: 'xiang_r2_cloud_snapshot_v5',
         ZOOM_DESKTOP: 'xiang_r2_zoom_desktop',
         ZOOM_MOBILE: 'xiang_r2_zoom_mobile',
         CATEGORIES: 'xiang_r2_categories_v2'
     };
+
+    const SUPPORTED_HDR_AND_IMAGE_EXT_RE = /\.(jpe?g|png|webp|avif|heic|heif|hif|jxl|tiff?|dng|cr2|cr3|arw|nef|raf|orf|rw2|hdr|exr|gif|svg|bmp|ico)$/i;
+
+    function isSupportedImageOrHdrFile(file) {
+        if (!file) return false;
+        if (file.type && file.type.startsWith('image/')) return true;
+        return SUPPORTED_HDR_AND_IMAGE_EXT_RE.test(file.name || '');
+    }
+
+    function isItemHdr(item) {
+        if (!item) return false;
+        if (item.exif && item.exif.hdr) return true;
+        const ext = (item.originalName || item.key || '').split('.').pop()?.toLowerCase() || '';
+        return ['heic', 'heif', 'hif', 'avif', 'jxl', 'hdr', 'exr', 'dng', 'tif', 'tiff'].includes(ext);
+    }
 
     // 注册 Service Worker 持久缓存静态资源与 /raw/ 图片直链，二次打开 0ms
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
@@ -46,13 +62,27 @@ document.addEventListener("DOMContentLoaded", () => {
     let uploadMode = localStorage.getItem(STORAGE_KEYS.UPLOAD_MODE) || 'original';
     let chinaCdnMode = localStorage.getItem(STORAGE_KEYS.CHINA_CDN_MODE) || 'smart-queue';
     let isHdrEnabled = localStorage.getItem(STORAGE_KEYS.HDR_MODE) !== '0';
+    // 默认极简纯白浅色模式 ('light')，支持一键切换深色模式 ('dark')
+    let isDarkMode = localStorage.getItem(STORAGE_KEYS.THEME) === 'dark';
 
     const btnHdrToggle = document.getElementById('btn-hdr-toggle');
+    const btnThemeToggle = document.getElementById('btn-theme-toggle');
+    const mobBtnTheme = document.getElementById('mob-btn-theme');
+
     function syncHdrModeUI() {
         document.body.classList.toggle('hdr-enabled', isHdrEnabled);
         btnHdrToggle?.classList.toggle('active', isHdrEnabled);
     }
+
+    function syncThemeUI() {
+        document.body.classList.toggle('dark-mode', isDarkMode);
+        if (mobBtnTheme) {
+            mobBtnTheme.textContent = isDarkMode ? '浅色' : '深色';
+        }
+    }
+
     syncHdrModeUI();
+    syncThemeUI();
 
     btnHdrToggle?.addEventListener('click', () => {
         isHdrEnabled = !isHdrEnabled;
@@ -63,6 +93,16 @@ document.addEventListener("DOMContentLoaded", () => {
             populateViewer();
         }
     });
+
+    function toggleThemeMode() {
+        isDarkMode = !isDarkMode;
+        localStorage.setItem(STORAGE_KEYS.THEME, isDarkMode ? 'dark' : 'light');
+        syncThemeUI();
+        toast(isDarkMode ? '已切换至深色模式' : '已切换至极简浅色模式');
+    }
+
+    btnThemeToggle?.addEventListener('click', toggleThemeMode);
+    mobBtnTheme?.addEventListener('click', toggleThemeMode);
 
     // 缩略图档位：桌面端 1..5 (对应 7, 5, 4, 3, 2 列)，手机端 1..4 (对应 5, 3, 2, 1 列)
     let desktopZoomLevel = Math.min(5, Math.max(1, parseInt(localStorage.getItem(STORAGE_KEYS.ZOOM_DESKTOP) || '3', 10)));
@@ -500,7 +540,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById('btn-quota-detail')?.addEventListener('click', () => openSettings());
 
     /* =========================================================
-       3. 首屏重度光学毛玻璃门禁 (Deep Smoked Optical Frosted Glass Vault)
+       3. 扁平毛玻璃门禁：IMG 光学快门字标 ⇄ 密码输入传导动效
     ========================================================= */
     const lockScreen = document.getElementById('lock-screen');
     const lockForm = document.getElementById('lock-form');
@@ -512,10 +552,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const lockEmblemStage = document.getElementById('lock-emblem-stage');
     const lockRippleRing = document.getElementById('lock-ripple-ring');
     const lockMark = document.getElementById('lock-mark');
+    const lockIrisProgress = document.getElementById('lock-iris-progress');
+    const lockConduitFill = document.getElementById('lock-conduit-fill');
+    const lockPhoton = document.getElementById('lock-photon');
+    const lockGlyphs = document.querySelectorAll('#lock-glyph-group .img-glyph');
     const lockError = document.getElementById('lock-error');
     const skeletonStageEl = document.getElementById('skeleton-stage');
 
     let typingBumpTimer = null;
+    let glyphWaveTimers = [];
     let autoVerifyTimer = null;
     let serverAuthHash = '';
     let serverNeedsFirstSetup = false;
@@ -530,6 +575,14 @@ document.addEventListener("DOMContentLoaded", () => {
             .join('');
     }
 
+    lockInput?.addEventListener('focus', () => {
+        lockEmblemStage?.classList.add('is-focused');
+    });
+
+    lockInput?.addEventListener('blur', () => {
+        lockEmblemStage?.classList.remove('is-focused');
+    });
+
     lockToggleVisBtn?.addEventListener('click', () => {
         if (!lockInput) return;
         const isPwd = lockInput.type === 'password';
@@ -538,22 +591,60 @@ document.addEventListener("DOMContentLoaded", () => {
         lockInput.focus();
     });
 
-    function triggerKeystrokeRipple() {
-        if (!lockRippleRing) return;
-        lockRippleRing.classList.remove('ripple-active');
-        void lockRippleRing.offsetWidth;
-        lockRippleRing.classList.add('ripple-active');
+    function triggerKeystrokeRippleAndPhoton(charLen) {
+        // 1. 密码框向顶部 IMG 发射垂直光子脉冲
+        if (lockPhoton) {
+            lockPhoton.classList.remove('photon-shoot');
+            void lockPhoton.offsetWidth;
+            lockPhoton.classList.add('photon-shoot');
+        }
+        // 2. 光子抵达 IMG 后触发外扩光学涟漪与 [I][M][G] 三联字标序列波浪
+        if (lockRippleRing) {
+            lockRippleRing.classList.remove('ripple-active');
+            void lockRippleRing.offsetWidth;
+            lockRippleRing.classList.add('ripple-active');
+        }
+        glyphWaveTimers.forEach(t => clearTimeout(t));
+        glyphWaveTimers = [];
+        if (lockGlyphs && lockGlyphs.length === 3 && charLen > 0) {
+            const targetIdx = (charLen - 1) % 3;
+            lockGlyphs.forEach((g, idx) => {
+                g.classList.toggle('glyph-active', idx === targetIdx);
+                g.classList.toggle('glyph-lit', idx !== targetIdx);
+            });
+            const t = setTimeout(() => {
+                lockGlyphs.forEach((g, idx) => {
+                    g.classList.remove('glyph-active');
+                    g.classList.toggle('glyph-lit', idx < Math.min(3, charLen));
+                });
+            }, 220);
+            glyphWaveTimers.push(t);
+        } else if (lockGlyphs) {
+            lockGlyphs.forEach(g => {
+                g.classList.remove('glyph-active', 'glyph-lit');
+            });
+        }
     }
 
     function syncLockTypingVisualizer() {
         const val = lockInput?.value || '';
         const len = val.length;
         lockMark?.classList.toggle('has-input', len > 0);
+        lockEmblemStage?.classList.toggle('has-text', len > 0);
         lockInputGroup?.classList.toggle('has-val', len > 0);
 
-        const fillPct = Math.min(100, (len / 10) * 100);
+        const fillPct = Math.min(100, (len / 8) * 100);
         if (lockInputLaser) {
             lockInputLaser.style.width = `${fillPct}%`;
+        }
+        if (lockConduitFill) {
+            lockConduitFill.style.height = `${fillPct}%`;
+        }
+        if (lockIrisProgress) {
+            lockIrisProgress.style.strokeDashoffset = String(Math.max(0, 100 - fillPct));
+        }
+        if (len === 0 && lockGlyphs) {
+            lockGlyphs.forEach(g => g.classList.remove('glyph-active', 'glyph-lit'));
         }
     }
 
@@ -567,7 +658,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const rawVal = (lockInput?.value || '').trim();
 
         syncLockTypingVisualizer();
-        triggerKeystrokeRipple();
+        triggerKeystrokeRippleAndPhoton(rawVal.length);
 
         lockMark?.classList.add('typing-bump');
         lockInputGroup?.classList.add('typing-pulse');
@@ -1287,7 +1378,7 @@ document.addEventListener("DOMContentLoaded", () => {
             dropOverlay?.classList.remove('active');
             dragDepth = 0;
 
-            const files = Array.from(e.dataTransfer?.files || []).filter(f => f.type.startsWith('image/'));
+            const files = Array.from(e.dataTransfer?.files || []).filter(isSupportedImageOrHdrFile);
             if (files.length > 0) {
                 await uploadFiles(files, targetFolder);
                 return;
@@ -1800,11 +1891,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 const fullUrl = getFullUrl(item);
 
                 const aspectStyle = (w > 0 && h > 0) ? `style="aspect-ratio: ${w} / ${h};"` : '';
+                const hasHdrBadge = isItemHdr(item);
 
                 // 纯粹毛玻璃悬浮画布卡片：底栏信息内嵌为悬浮毛玻璃层 (.photo-glass-bar)
                 card.innerHTML = `
                     <div class="photo-thumb-wrap" ${aspectStyle}>
                         <button type="button" class="thumb-check" title="选择">${isSelected ? '✓' : ''}</button>
+                        ${hasHdrBadge ? '<span class="card-hdr-tag">HDR</span>' : ''}
                         <img alt="${name}" decoding="async">
                         <div class="thumb-retry-overlay" hidden><span>点击重试</span></div>
                         <div class="photo-glass-bar">
@@ -2087,7 +2180,7 @@ document.addEventListener("DOMContentLoaded", () => {
         dragDepth = 0;
         dropOverlay?.classList.remove('active');
         if (!isUnlocked) return;
-        const files = Array.from(e.dataTransfer?.files || []).filter(f => f.type.startsWith('image/'));
+        const files = Array.from(e.dataTransfer?.files || []).filter(isSupportedImageOrHdrFile);
         if (files.length) uploadFiles(files);
     });
 
@@ -2098,21 +2191,83 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!items) return;
         const files = [];
         for (const item of items) {
-            if (item.type.startsWith('image/')) {
-                const f = item.getAsFile();
-                if (f) files.push(f);
-            }
+            const f = item.getAsFile();
+            if (f && isSupportedImageOrHdrFile(f)) files.push(f);
         }
         if (files.length) uploadFiles(files);
     });
 
+    // 检测主流 HDR 图像格式与增益图元数据 (ISO 21496-1 Ultra HDR / Apple Gain Map / HEIC / AVIF / 16-bit PNG / JXL / RAW)
+    async function detectHdrFormat(file) {
+        if (!file) return '';
+        const name = (file.name || '').toLowerCase();
+        const ext = name.split('.').pop() || '';
+
+        if (['heic', 'heif', 'hif'].includes(ext) || file.type === 'image/heic' || file.type === 'image/heif') {
+            return 'HEIC HDR';
+        }
+        if (ext === 'jxl' || file.type === 'image/jxl') return 'JPEG XL HDR';
+        if (ext === 'hdr' || ext === 'exr') return 'Radiance HDR';
+        if (['dng', 'cr2', 'cr3', 'arw', 'nef', 'raf', 'orf', 'rw2'].includes(ext)) return 'RAW HDR';
+        if (['tif', 'tiff'].includes(ext)) return 'TIFF HDR';
+
+        try {
+            const slice = file.slice(0, 262144);
+            const buf = await slice.arrayBuffer();
+            const bytes = new Uint8Array(buf);
+            const ascii = new TextDecoder('latin1').decode(bytes);
+
+            // ISO 21496-1 / Android Ultra HDR Gain Map
+            if (
+                ascii.includes('urn:iso:std:iso:ts:21496:-1') ||
+                ascii.includes('hdr-gain-map') ||
+                ascii.includes('gmAP')
+            ) {
+                return 'Ultra HDR';
+            }
+            // Apple HDR Gain Map / MPF Auxiliary Gain Map
+            if (
+                ascii.includes('hdrgainmap') ||
+                ascii.includes('HDRGainMap') ||
+                ascii.includes('CustomRendered') && ascii.includes('MPF\0')
+            ) {
+                return 'Apple HDR';
+            }
+            // AVIF HDR / 10-bit or Gain Map tmap box
+            if (ext === 'avif' || file.type === 'image/avif' || ascii.includes('ftypavif')) {
+                if (ascii.includes('tmap') || ascii.includes('nclx') || ascii.includes('colr')) {
+                    return 'AVIF HDR';
+                }
+                return 'AVIF P3';
+            }
+            // PNG cICP (Rec.2020 / PQ / HLG) or 16-bit depth IHDR
+            if (ext === 'png' || file.type === 'image/png') {
+                if (ascii.includes('cICP')) return 'PNG HDR';
+                if (bytes.length > 25 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[24] === 16) {
+                    return '16-bit HDR';
+                }
+            }
+            // Display-P3 ICC profile in JPEG/WebP
+            if (ascii.includes('Display P3') || ascii.includes('Rec. 2020') || ascii.includes('BT.2020') || ascii.includes('ITUR_2100')) {
+                if (ascii.includes('MPF\0')) return 'Apple HDR';
+                return 'Display P3';
+            }
+        } catch {}
+        return '';
+    }
+
     async function parseExif(file) {
-        if (!file || !file.type.includes('jpeg')) return {};
+        if (!file) return {};
+        const hdrTag = await detectHdrFormat(file);
+        const baseExif = hdrTag ? { hdr: hdrTag } : {};
+        const nameLower = (file.name || '').toLowerCase();
+        const isJpeg = (file.type && file.type.includes('jpeg')) || /\.jpe?g$/i.test(nameLower);
+        if (!isJpeg) return baseExif;
         try {
             const slice = file.slice(0, 131072);
             const buf = await slice.arrayBuffer();
             const view = new DataView(buf);
-            if (view.byteLength < 12 || view.getUint16(0, false) !== 0xFFD8) return {};
+            if (view.byteLength < 12 || view.getUint16(0, false) !== 0xFFD8) return baseExif;
 
             let offset = 2;
             while (offset + 4 < view.byteLength) {
@@ -2181,6 +2336,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     const shutter = exp ? (exp < 1 ? `1/${Math.round(1 / exp)}s` : `${exp}s`) : '';
 
                     return {
+                        ...baseExif,
                         camera,
                         lens: tags[0xA434] || '',
                         focal: tags[0x920A] ? `${Math.round(tags[0x920A])}mm` : '',
@@ -2194,33 +2350,54 @@ document.addEventListener("DOMContentLoaded", () => {
                     offset += view.getUint16(offset, false);
                 }
             }
-            return {};
+            return baseExif;
         } catch {
-            return {};
+            return baseExif;
         }
     }
 
-    async function prepareImageAndThumbnail(file) {
-        const img = await new Promise((resolve, reject) => {
-            const el = new Image();
-            const u = URL.createObjectURL(file);
-            el.onload = () => { URL.revokeObjectURL(u); resolve(el); };
-            el.onerror = reject;
-            el.src = u;
-        });
+    async function prepareImageAndThumbnail(file, isHdrFile = false) {
+        // 尝试使用浏览器解码生成 600px 极速缩略图与 LQIP；若遇到当前浏览器暂不支持直接解码的容器 (如 Windows 下的 HEIC/RAW/JXL)，不中断上传，直接原图直传
+        let img = null;
+        try {
+            img = await new Promise((resolve, reject) => {
+                const el = new Image();
+                const u = URL.createObjectURL(file);
+                const timer = setTimeout(() => {
+                    URL.revokeObjectURL(u);
+                    reject(new Error('decode timeout'));
+                }, 8000);
+                el.onload = () => {
+                    clearTimeout(timer);
+                    URL.revokeObjectURL(u);
+                    resolve(el);
+                };
+                el.onerror = (err) => {
+                    clearTimeout(timer);
+                    URL.revokeObjectURL(u);
+                    reject(err);
+                };
+                el.src = u;
+            });
+        } catch {
+            img = null;
+        }
 
-        let width = img.naturalWidth || 1920;
-        let height = img.naturalHeight || 1080;
+        let width = img ? (img.naturalWidth || 0) : 0;
+        let height = img ? (img.naturalHeight || 0) : 0;
 
         let thumbBlob = null;
         let lqip = '';
-        if (file.type !== 'image/svg+xml' && file.type !== 'image/gif') {
-            const generated = await createCanvasThumbAndLqip(img);
-            thumbBlob = generated.thumbBlob;
-            lqip = generated.lqip;
+        if (img && file.type !== 'image/svg+xml' && file.type !== 'image/gif') {
+            try {
+                const generated = await createCanvasThumbAndLqip(img);
+                thumbBlob = generated.thumbBlob;
+                lqip = generated.lqip;
+            } catch {}
         }
 
-        if (uploadMode === 'original' || file.type === 'image/svg+xml' || file.type === 'image/gif') {
+        // 若是 HDR 照片、或浏览器未能解码容器、或用户选择无损原图，一律原样保留主文件 (防止 2D Canvas 抹除 HDR 增益图或 10-bit 色深)
+        if (!img || isHdrFile || uploadMode === 'original' || file.type === 'image/svg+xml' || file.type === 'image/gif') {
             return { file, thumbBlob, lqip, width, height };
         }
 
@@ -2261,10 +2438,9 @@ document.addEventListener("DOMContentLoaded", () => {
             if (ribbonPercent) ribbonPercent.textContent = `${pct}%`;
 
             try {
-                const [exif, { file, thumbBlob, lqip, width, height }] = await Promise.all([
-                    parseExif(rawFile),
-                    prepareImageAndThumbnail(rawFile)
-                ]);
+                const exif = await parseExif(rawFile);
+                const isHdrFile = Boolean(exif && exif.hdr);
+                const { file, thumbBlob, lqip, width, height } = await prepareImageAndThumbnail(rawFile, isHdrFile);
 
                 let newItem = null;
 
@@ -2473,7 +2649,14 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const ex = item.exif || {};
+        const hdrLabel = ex.hdr || (isItemHdr(item) ? 'HDR' : '');
+        const viewerHdrIndicator = document.getElementById('viewer-hdr-indicator');
+        if (viewerHdrIndicator) {
+            viewerHdrIndicator.textContent = hdrLabel || 'HDR P3';
+        }
+
         const entries = [
+            ['动态范围', hdrLabel],
             ['相机', ex.camera],
             ['镜头', ex.lens],
             ['焦距', ex.focal],

@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="color-scheme" content="dark">
+    <meta name="color-scheme" content="light dark">
     <title>IMG</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='4' fill='%230b0c10' stroke='rgba(255,255,255,0.32)' stroke-width='1.5'/%3E%3Cpath d='M6 23l6.5-7.5 4.5 5 4-4.5 5 7H6z' fill='%23ffffff' opacity='0.92'/%3E%3Ccircle cx='11' cy='11' r='2.2' fill='%23ffffff'/%3E%3C/svg%3E" type="image/svg+xml">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='5' fill='%230f172a'/%3E%3Cpath d='M6 23l6.5-7.5 4.5 5 4-4.5 5 7H6z' fill='%23ffffff' opacity='0.94'/%3E%3Ccircle cx='11' cy='11' r='2.2' fill='%23ffffff'/%3E%3C/svg%3E" type="image/svg+xml">
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body class="locked hdr-enabled">
 
-    <!-- 光学暗房柔光折射底幕 (专为重度毛玻璃折射与 HDR 广色域对比度设计) -->
+    <!-- 扁平化柔光环境底幕 (默认极简云白，支持一键切换深邃暗夜) -->
     <div class="ambient-canvas" aria-hidden="true">
         <div class="ambient-orb orb-1"></div>
         <div class="ambient-orb orb-2"></div>
@@ -19,7 +19,7 @@
     </div>
 
     <!-- =========================================================
-         0-A. 网站启动高透毛玻璃加载序幕 (Optical Glass Preloader)
+         0-A. 网站启动极简毛玻璃加载序幕 (Minimalist Flat Glass Preloader)
     ========================================================= -->
     <div id="site-loader" class="site-loader">
         <div class="loader-acrylic-box">
@@ -35,16 +35,43 @@
     </div>
 
     <!-- =========================================================
-         0-B. 重度光学毛玻璃门禁 (Deep Frosted Glass Vault)
+         0-B. 扁平毛玻璃门禁：IMG 光学快门字标 ⇄ 密码输入传导动效
     ========================================================= -->
     <div id="lock-screen" class="lock-screen">
         <div class="lock-glass-card" id="lock-box">
-            <!-- 矩形光学毛玻璃印记 (纯净铂金高光折射) -->
+            <!-- IMG 光学快门与密码传导交互舞台 -->
             <div class="lock-emblem-stage" id="lock-emblem-stage">
-                <span class="lock-ripple-rect" id="lock-ripple-ring"></span>
+                <!-- 外围光学快门刻度环 + 进度圆弧 -->
+                <div class="lock-iris-wrap" aria-hidden="true">
+                    <svg class="lock-iris-svg" viewBox="0 0 180 76">
+                        <rect class="iris-track" x="3" y="3" width="174" height="70" rx="8" />
+                        <rect class="iris-progress" id="lock-iris-progress" x="3" y="3" width="174" height="70" rx="8" pathLength="100" />
+                    </svg>
+                    <span class="lock-ripple-rect" id="lock-ripple-ring"></span>
+                </div>
+
+                <!-- 矩形毛玻璃三联字标 [I][M][G] (随每次按键产生序列波浪与光学快门响应) -->
                 <div class="lock-rect-monolith" id="lock-mark">
+                    <span class="vf-corner tl"></span>
+                    <span class="vf-corner tr"></span>
+                    <span class="vf-corner bl"></span>
+                    <span class="vf-corner br"></span>
                     <span class="rect-sheen"></span>
-                    <span class="rect-logo-text">IMG</span>
+                    <div class="img-glyph-group" id="lock-glyph-group">
+                        <span class="img-glyph" data-idx="0">I</span>
+                        <span class="img-glyph-sep"></span>
+                        <span class="img-glyph" data-idx="1">M</span>
+                        <span class="img-glyph-sep"></span>
+                        <span class="img-glyph" data-idx="2">G</span>
+                    </div>
+                </div>
+
+                <!-- 连接 IMG 与密码输入框的垂直光学传导桥 (每次按键向 IMG 发射光子脉冲) -->
+                <div class="lock-conduit" id="lock-conduit" aria-hidden="true">
+                    <span class="conduit-track"></span>
+                    <span class="conduit-fill" id="lock-conduit-fill"></span>
+                    <span class="conduit-photon" id="lock-photon"></span>
+                    <span class="conduit-node" id="lock-conduit-node"></span>
                 </div>
             </div>
 
@@ -68,19 +95,19 @@
         </div>
     </div>
 
-    <!-- 全局文件选择器 -->
-    <input type="file" id="file-input" multiple accept="image/*,.heic,.heif,.avif,.tiff,.dng" hidden>
+    <!-- 全局文件选择器 (完整支持主流 HDR 格式：Ultra HDR JPEG, Apple HEIC/HEIF, 10-bit AVIF, JXL, 16-bit PNG/TIFF, DNG/RAW) -->
+    <input type="file" id="file-input" multiple accept="image/*,.heic,.heif,.hif,.avif,.jxl,.tif,.tiff,.dng,.cr2,.cr3,.arw,.nef,.raf,.orf,.rw2,.hdr,.exr" hidden>
 
     <!-- 拖拽上传毛玻璃遮罩 -->
     <div id="drop-overlay" class="drop-overlay" aria-hidden="true">
         <div class="drop-glass-card">
             <span class="drop-plus">+</span>
-            <p class="drop-title" id="drop-target-hint">松开上传</p>
+            <p class="drop-title" id="drop-target-hint">松开上传图片 (支持 HDR / HEIC / AVIF / RAW)</p>
         </div>
     </div>
 
     <!-- =========================================================
-         1. 顶部重度毛玻璃导航栏 (Frosted Acrylic Command Bar)
+         1. 顶部扁平化毛玻璃导航栏 (Flat Frosted Glass Command Bar)
     ========================================================= -->
     <header class="top-glass-header" id="top-bar">
         <div class="glass-dock">
@@ -92,7 +119,7 @@
                 </a>
             </div>
 
-            <!-- 中间：毛玻璃分类导航轨 + 新建分类按钮 -->
+            <!-- 中间：扁平毛玻璃分类导航轨 + 新建分类按钮 -->
             <div class="dock-categories-group">
                 <nav class="folder-tabs" id="folder-tabs" aria-label="分类">
                     <button class="tab-item active" data-folder="all">全部</button>
@@ -100,7 +127,7 @@
                 <button type="button" class="dock-cat-add" id="btn-new-folder" title="分类管理">+</button>
             </div>
 
-            <!-- 右侧：搜索 + 缩放 + HDR + 容量 + 操作 -->
+            <!-- 右侧：搜索 + 缩放 + HDR + 浅色/深色切换 + 容量 + 操作 -->
             <div class="dock-tools-group">
                 <div class="search-wrap">
                     <svg class="search-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -118,7 +145,18 @@
                 </div>
 
                 <!-- HDR 广色域高动态范围开关 -->
-                <button type="button" class="hdr-pill active" id="btn-hdr-toggle" title="切换 HDR 广色域高光渲染与原图直出">HDR</button>
+                <button type="button" class="hdr-pill active" id="btn-hdr-toggle" title="HDR 广色域高光渲染与原图直出">HDR</button>
+
+                <!-- 极简白 / 深色模式一键切换 -->
+                <button type="button" class="glass-icon-btn" id="btn-theme-toggle" title="切换浅色 / 深色模式" aria-label="切换主题">
+                    <svg class="icon-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                    <svg class="icon-sun" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75">
+                        <circle cx="12" cy="12" r="4"></circle>
+                        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+                    </svg>
+                </button>
 
                 <button type="button" class="quota-pill" id="btn-quota-detail" title="存储空间">
                     <span class="quota-used" id="quota-pill-text">0 MB</span>
@@ -128,7 +166,7 @@
                 </button>
 
                 <button type="button" class="glass-btn" id="btn-batch-toggle" title="多选 (B)">多选</button>
-                <button type="button" class="glass-btn primary" id="btn-upload" title="上传">上传</button>
+                <button type="button" class="glass-btn primary" id="btn-upload" title="上传图片 (支持 HDR)">上传</button>
                 <button type="button" class="glass-icon-btn" id="btn-settings" title="设置" aria-label="设置">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7">
                         <circle cx="12" cy="12" r="3"></circle>
@@ -151,7 +189,7 @@
     </div>
 
     <!-- =========================================================
-         2. 主画廊：光学毛玻璃卡片瀑布流
+         2. 主画廊：扁平化毛玻璃卡片瀑布流
     ========================================================= -->
     <main class="space-main" id="space-main">
         <!-- 骨架屏 -->
@@ -168,7 +206,7 @@
         <div class="empty-stage" id="empty-stage" hidden>
             <div class="empty-glass-box" id="empty-drop-trigger">
                 <span class="empty-plus">+</span>
-                <p class="empty-title">点击或拖拽上传</p>
+                <p class="empty-title">点击或拖拽上传 (支持 HDR / HEIC / AVIF)</p>
             </div>
         </div>
 
@@ -183,7 +221,7 @@
     </div>
 
     <!-- =========================================================
-         3. 移动端底部毛玻璃栏
+         3. 移动端底部扁平毛玻璃栏
     ========================================================= -->
     <nav class="mobile-bottom-bar" id="mobile-bottom-bar" aria-label="快捷栏">
         <div class="mob-zoom-group">
@@ -195,6 +233,7 @@
         <button type="button" class="mob-upload-fab" id="mob-btn-upload">+ 上传</button>
 
         <div class="mob-right-group">
+            <button type="button" class="mob-tool-btn" id="mob-btn-theme">深浅</button>
             <button type="button" class="mob-tool-btn" id="mob-btn-cat">分类</button>
             <button type="button" class="mob-tool-btn" id="mob-btn-batch">多选</button>
             <button type="button" class="mob-tool-btn" id="mob-btn-settings">设置</button>
@@ -227,12 +266,12 @@
     </div>
 
     <!-- =========================================================
-         5. HDR 光学毛玻璃大图检视层 (HDR Optical Glass Viewer)
+         5. HDR 扁平毛玻璃大图检视层 (HDR Flat Glass Viewer)
     ========================================================= -->
     <div class="viewer-backdrop" id="viewer-modal" aria-hidden="true">
         <div class="viewer-layout">
             <div class="viewer-stage" id="viewer-stage">
-                <!-- HDR 动态环境光背投层 (从当前照片实时晕染毛玻璃背景) -->
+                <!-- HDR 动态环境光背投层 -->
                 <img id="viewer-ambilight" class="viewer-ambilight" alt="" aria-hidden="true">
                 <div class="viewer-top-badges">
                     <span class="viewer-hdr-badge" id="viewer-hdr-indicator">HDR P3</span>
@@ -286,7 +325,7 @@
                     </div>
 
                     <div class="exif-block" id="exif-block">
-                        <label class="field-label">EXIF</label>
+                        <label class="field-label">EXIF / HDR</label>
                         <div class="exif-list" id="exif-list"></div>
                     </div>
                 </div>
@@ -362,11 +401,11 @@
             </div>
 
             <div class="settings-field">
-                <label class="field-label">上传策略</label>
+                <label class="field-label">上传策略 (HDR 照片自动无损保留)</label>
                 <select id="select-upload-mode" class="minimal-input">
-                    <option value="original">无损原图（完整保留 Apple/ISO HDR 增益图）</option>
-                    <option value="webp-4k">WebP · 4K</option>
-                    <option value="webp-2k">WebP · 2.5K</option>
+                    <option value="original">无损原图（完整保留 Apple / ISO HDR 增益图）</option>
+                    <option value="webp-4k">WebP · 4K（HDR 照片仍自动保留原图）</option>
+                    <option value="webp-2k">WebP · 2.5K（HDR 照片仍自动保留原图）</option>
                 </select>
             </div>
 

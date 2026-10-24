@@ -81,14 +81,24 @@ export async function onRequestGet(context) {
   headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
   headers.set("Timing-Allow-Origin", "*");
 
-  if (!headers.has("Content-Type")) {
+  if (!headers.has("Content-Type") || headers.get("Content-Type") === "application/octet-stream") {
     const ext = key.split(".").pop()?.toLowerCase();
     const mimeMap = {
       jpg: "image/jpeg",
       jpeg: "image/jpeg",
+      jpe: "image/jpeg",
       png: "image/png",
       webp: "image/webp",
       avif: "image/avif",
+      heic: "image/heic",
+      heif: "image/heif",
+      hif: "image/heif",
+      jxl: "image/jxl",
+      tif: "image/tiff",
+      tiff: "image/tiff",
+      dng: "image/x-adobe-dng",
+      hdr: "image/vnd.radiance",
+      exr: "image/x-exr",
       gif: "image/gif",
       svg: "image/svg+xml",
     };
