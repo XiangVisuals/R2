@@ -19,6 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
         CUSTOM_DOMAIN: 'xiang_r2_domain',
         UPLOAD_MODE: 'xiang_r2_upload_mode',
         CHINA_CDN_MODE: 'xiang_r2_china_cdn_mode',
+        HDR_MODE: 'xiang_r2_hdr_mode',
         LOCAL_ITEMS: 'xiang_r2_local_items',
         CLOUD_SNAPSHOT: 'xiang_r2_cloud_snapshot_v5',
         ZOOM_DESKTOP: 'xiang_r2_zoom_desktop',
@@ -44,6 +45,24 @@ document.addEventListener("DOMContentLoaded", () => {
     let customDomain = localStorage.getItem(STORAGE_KEYS.CUSTOM_DOMAIN) || '';
     let uploadMode = localStorage.getItem(STORAGE_KEYS.UPLOAD_MODE) || 'original';
     let chinaCdnMode = localStorage.getItem(STORAGE_KEYS.CHINA_CDN_MODE) || 'smart-queue';
+    let isHdrEnabled = localStorage.getItem(STORAGE_KEYS.HDR_MODE) !== '0';
+
+    const btnHdrToggle = document.getElementById('btn-hdr-toggle');
+    function syncHdrModeUI() {
+        document.body.classList.toggle('hdr-enabled', isHdrEnabled);
+        btnHdrToggle?.classList.toggle('active', isHdrEnabled);
+    }
+    syncHdrModeUI();
+
+    btnHdrToggle?.addEventListener('click', () => {
+        isHdrEnabled = !isHdrEnabled;
+        localStorage.setItem(STORAGE_KEYS.HDR_MODE, isHdrEnabled ? '1' : '0');
+        syncHdrModeUI();
+        toast(isHdrEnabled ? 'HDR 广色域高动态渲染已开启' : 'HDR 渲染已关闭');
+        if (activeViewerIdx >= 0) {
+            populateViewer();
+        }
+    });
 
     // 缩略图档位：桌面端 1..5 (对应 7, 5, 4, 3, 2 列)，手机端 1..4 (对应 5, 3, 2, 1 列)
     let desktopZoomLevel = Math.min(5, Math.max(1, parseInt(localStorage.getItem(STORAGE_KEYS.ZOOM_DESKTOP) || '3', 10)));
@@ -481,7 +500,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById('btn-quota-detail')?.addEventListener('click', () => openSettings());
 
     /* =========================================================
-       3. 首屏硬朗亚克力矩形棱镜门禁 (Rectangular Prism Acrylic Vault)
+       3. 首屏重度光学毛玻璃门禁 (Deep Smoked Optical Frosted Glass Vault)
     ========================================================= */
     const lockScreen = document.getElementById('lock-screen');
     const lockForm = document.getElementById('lock-form');
@@ -493,17 +512,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const lockEmblemStage = document.getElementById('lock-emblem-stage');
     const lockRippleRing = document.getElementById('lock-ripple-ring');
     const lockMark = document.getElementById('lock-mark');
-    const lockSpectrumBars = document.getElementById('lock-spectrum-bars');
     const lockError = document.getElementById('lock-error');
-    const lockFooterHint = document.getElementById('lock-footer-hint');
-    const r2ConnStatus = document.getElementById('r2-conn-status');
     const skeletonStageEl = document.getElementById('skeleton-stage');
-
-    const PRISM_COLORS = [
-        '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1',
-        '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
-        '#f43f5e', '#f59e0b', '#10b981', '#14b8a6'
-    ];
 
     let typingBumpTimer = null;
     let autoVerifyTimer = null;
@@ -528,9 +538,8 @@ document.addEventListener("DOMContentLoaded", () => {
         lockInput.focus();
     });
 
-    function triggerKeystrokeRipple(color) {
+    function triggerKeystrokeRipple() {
         if (!lockRippleRing) return;
-        lockRippleRing.style.setProperty('--ripple-color', color || '#3b82f6');
         lockRippleRing.classList.remove('ripple-active');
         void lockRippleRing.offsetWidth;
         lockRippleRing.classList.add('ripple-active');
@@ -542,26 +551,9 @@ document.addEventListener("DOMContentLoaded", () => {
         lockMark?.classList.toggle('has-input', len > 0);
         lockInputGroup?.classList.toggle('has-val', len > 0);
 
-        // 1. 输入框底部多彩激光进度条
         const fillPct = Math.min(100, (len / 10) * 100);
         if (lockInputLaser) {
             lockInputLaser.style.width = `${fillPct}%`;
-        }
-
-        // 2. 顶部矩形 IMG 内部 12 段式多彩频谱实时跳动充能
-        if (lockSpectrumBars) {
-            const segs = lockSpectrumBars.querySelectorAll('.spec-seg');
-            const litCount = len === 0 ? 0 : Math.min(12, Math.max(2, Math.ceil((len / 10) * 12)));
-            segs.forEach((seg, idx) => {
-                if (idx < litCount) {
-                    seg.classList.add('lit');
-                    const wave = ((len * 7 + idx * 5) % 9) + 6;
-                    seg.style.height = `${wave}px`;
-                } else {
-                    seg.classList.remove('lit');
-                    seg.style.height = '3px';
-                }
-            });
         }
     }
 
@@ -573,13 +565,10 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         lockEmblemStage?.classList.remove('unlocked-state');
         const rawVal = (lockInput?.value || '').trim();
-        const len = rawVal.length;
-        const activeColor = PRISM_COLORS[len % PRISM_COLORS.length];
 
         syncLockTypingVisualizer();
-        triggerKeystrokeRipple(activeColor);
+        triggerKeystrokeRipple();
 
-        lockInputGroup?.style.setProperty('--pulse-color', activeColor);
         lockMark?.classList.add('typing-bump');
         lockInputGroup?.classList.add('typing-pulse');
         clearTimeout(typingBumpTimer);
@@ -2356,6 +2345,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const viewerModal = document.getElementById('viewer-modal');
     const viewerStage = document.getElementById('viewer-stage');
     const viewerImg = document.getElementById('viewer-img');
+    const viewerAmbilight = document.getElementById('viewer-ambilight');
     const btnLoadHd = document.getElementById('btn-load-hd');
     const metaTitleInput = document.getElementById('meta-title-input');
     const metaFolderInput = document.getElementById('meta-folder-input');
@@ -2374,6 +2364,9 @@ document.addEventListener("DOMContentLoaded", () => {
     function closeViewer() {
         activeViewerIdx = -1;
         viewerModal?.classList.remove('open');
+        if (viewerAmbilight) {
+            viewerAmbilight.classList.remove('is-active');
+        }
     }
 
     function renderViewerCategoryChips(currentItem) {
@@ -2402,6 +2395,34 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    async function upgradeViewerToOriginalHdr(item, fullUrl) {
+        if (!fullUrl || !viewerImg) return;
+        if (btnLoadHd) {
+            btnLoadHd.hidden = false;
+            btnLoadHd.textContent = 'HDR 原图加载中...';
+            btnLoadHd.disabled = true;
+        }
+        try {
+            const hd = new Image();
+            hd.src = fullUrl;
+            if (typeof hd.decode === 'function') {
+                await hd.decode();
+            } else {
+                await new Promise((res, rej) => { hd.onload = res; hd.onerror = rej; });
+            }
+            if (viewerImg && filteredImages[activeViewerIdx] === item) {
+                viewerImg.src = fullUrl;
+                if (viewerAmbilight) viewerAmbilight.src = fullUrl;
+                if (btnLoadHd) btnLoadHd.hidden = true;
+            }
+        } catch {
+            if (btnLoadHd && filteredImages[activeViewerIdx] === item) {
+                btnLoadHd.textContent = `加载原图 (${formatBytes(item.size)})`;
+                btnLoadHd.disabled = false;
+            }
+        }
+    }
+
     function populateViewer(alreadyDecodedSrc = null) {
         const item = filteredImages[activeViewerIdx];
         if (!item) return;
@@ -2413,12 +2434,19 @@ document.addEventListener("DOMContentLoaded", () => {
         if (viewerImg) {
             viewerImg.src = fastThumb;
         }
+        if (viewerAmbilight) {
+            viewerAmbilight.src = fastThumb;
+            viewerAmbilight.classList.add('is-active');
+        }
 
         if (btnLoadHd) {
             if (fullUrl && fullUrl !== fastThumb) {
                 btnLoadHd.hidden = false;
                 btnLoadHd.textContent = `加载原图 (${formatBytes(item.size)})`;
                 btnLoadHd.disabled = false;
+                if (isHdrEnabled) {
+                    upgradeViewerToOriginalHdr(item, fullUrl);
+                }
             } else {
                 btnLoadHd.hidden = true;
             }
@@ -2471,25 +2499,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const item = filteredImages[activeViewerIdx];
         if (!item) return;
         const fullUrl = getFullUrl(item);
-        btnLoadHd.textContent = '加载中...';
-        btnLoadHd.disabled = true;
-
-        try {
-            const hd = new Image();
-            hd.src = fullUrl;
-            if (typeof hd.decode === 'function') {
-                await hd.decode();
-            } else {
-                await new Promise((res, rej) => { hd.onload = res; hd.onerror = rej; });
-            }
-            if (viewerImg && filteredImages[activeViewerIdx] === item) {
-                viewerImg.src = fullUrl;
-                btnLoadHd.hidden = true;
-            }
-        } catch {
-            btnLoadHd.textContent = '重试加载原图';
-            btnLoadHd.disabled = false;
-        }
+        await upgradeViewerToOriginalHdr(item, fullUrl);
     });
 
     metaFolderInput?.addEventListener('input', () => {

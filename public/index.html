@@ -3,35 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="color-scheme" content="dark">
     <title>IMG</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%2306b6d4'/%3E%3Cstop offset='50%25' stop-color='%238b5cf6'/%3E%3Cstop offset='100%25' stop-color='%23ec4899'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='2' y='2' width='28' height='28' rx='2' fill='%230f172a' stroke='url(%23g)' stroke-width='2'/%3E%3Cpath d='M6 23l6.5-7.5 4.5 5 4-4.5 5 7H6z' fill='%23fff'/%3E%3Crect x='7' y='8' width='4' height='4' fill='%2306b6d4'/%3E%3C/svg%3E" type="image/svg+xml">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='4' fill='%230b0c10' stroke='rgba(255,255,255,0.32)' stroke-width='1.5'/%3E%3Cpath d='M6 23l6.5-7.5 4.5 5 4-4.5 5 7H6z' fill='%23ffffff' opacity='0.92'/%3E%3Ccircle cx='11' cy='11' r='2.2' fill='%23ffffff'/%3E%3C/svg%3E" type="image/svg+xml">
     <link rel="stylesheet" href="/css/style.css">
 </head>
-<body class="locked">
+<body class="locked hdr-enabled">
 
-    <!-- 多彩极光环境折射底幕 (Windows 10 Acrylic 玻璃折射光源) -->
+    <!-- 光学暗房柔光折射底幕 (专为重度毛玻璃折射与 HDR 广色域对比度设计) -->
     <div class="ambient-canvas" aria-hidden="true">
         <div class="ambient-orb orb-1"></div>
         <div class="ambient-orb orb-2"></div>
         <div class="ambient-orb orb-3"></div>
-        <div class="ambient-grid"></div>
+        <div class="glass-noise"></div>
     </div>
 
     <!-- =========================================================
-         0-A. 网站启动多彩矩形棱镜加载动画 (Rectangular Prism Loader)
+         0-A. 网站启动高透毛玻璃加载序幕 (Optical Glass Preloader)
     ========================================================= -->
     <div id="site-loader" class="site-loader">
         <div class="loader-acrylic-box">
-            <div class="loader-prism-edge"></div>
+            <div class="loader-shimmer"></div>
             <div class="loader-head-row">
                 <span class="loader-logo-rect">IMG</span>
-                <span class="loader-status-tag" id="site-loader-text">SYNC</span>
-            </div>
-            <!-- 12 段式多彩律动频谱矩阵 -->
-            <div class="loader-spectrum" aria-hidden="true">
-                <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span><span style="--i:3"></span>
-                <span style="--i:4"></span><span style="--i:5"></span><span style="--i:6"></span><span style="--i:7"></span>
-                <span style="--i:8"></span><span style="--i:9"></span><span style="--i:10"></span><span style="--i:11"></span>
+                <span class="loader-hdr-tag">HDR</span>
             </div>
             <div class="loader-bar-wrap">
                 <div class="loader-bar-fill" id="site-loader-bar"></div>
@@ -40,48 +35,16 @@
     </div>
 
     <!-- =========================================================
-         0-B. Windows 10 硬朗亚克力毛玻璃门禁 + 矩形多彩 IMG 能量核
+         0-B. 重度光学毛玻璃门禁 (Deep Frosted Glass Vault)
     ========================================================= -->
     <div id="lock-screen" class="lock-screen">
         <div class="lock-glass-card" id="lock-box">
-            <!-- 顶部流光彩条 -->
-            <div class="acrylic-top-spectrum" id="lock-top-spectrum"></div>
-
-            <!-- 矩形多彩棱镜 IMG 核心 (取代原圆形设计) -->
+            <!-- 矩形光学毛玻璃印记 (纯净铂金高光折射) -->
             <div class="lock-emblem-stage" id="lock-emblem-stage">
                 <span class="lock-ripple-rect" id="lock-ripple-ring"></span>
-
                 <div class="lock-rect-monolith" id="lock-mark">
-                    <!-- 四角精密硬朗准星边角 -->
-                    <i class="rect-corner tl"></i>
-                    <i class="rect-corner tr"></i>
-                    <i class="rect-corner bl"></i>
-                    <i class="rect-corner br"></i>
-
-                    <!-- 激光扫描线 -->
-                    <span class="rect-scanline"></span>
-
-                    <!-- 矩形核心文字 -->
-                    <div class="rect-logo-row">
-                        <span class="rect-prism-bar"></span>
-                        <span class="rect-logo-text">IMG</span>
-                    </div>
-
-                    <!-- 12 段式矩形多彩能量频谱条 (随打字实时跳动充能，不与输入框重叠) -->
-                    <div class="lock-spectrum-bars" id="lock-spectrum-bars" aria-hidden="true">
-                        <span class="spec-seg" style="--seg-idx:0"></span>
-                        <span class="spec-seg" style="--seg-idx:1"></span>
-                        <span class="spec-seg" style="--seg-idx:2"></span>
-                        <span class="spec-seg" style="--seg-idx:3"></span>
-                        <span class="spec-seg" style="--seg-idx:4"></span>
-                        <span class="spec-seg" style="--seg-idx:5"></span>
-                        <span class="spec-seg" style="--seg-idx:6"></span>
-                        <span class="spec-seg" style="--seg-idx:7"></span>
-                        <span class="spec-seg" style="--seg-idx:8"></span>
-                        <span class="spec-seg" style="--seg-idx:9"></span>
-                        <span class="spec-seg" style="--seg-idx:10"></span>
-                        <span class="spec-seg" style="--seg-idx:11"></span>
-                    </div>
+                    <span class="rect-sheen"></span>
+                    <span class="rect-logo-text">IMG</span>
                 </div>
             </div>
 
@@ -89,7 +52,7 @@
                 <div class="lock-input-group" id="lock-input-group">
                     <input type="password" id="lock-password-input" class="lock-input" placeholder="输入密码" autofocus>
                     <button type="button" id="lock-toggle-vis" class="lock-vis-btn" title="显示/隐藏" aria-label="显示密码">
-                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6">
                             <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/>
                             <circle cx="12" cy="12" r="3"/>
                         </svg>
@@ -98,7 +61,6 @@
                         <span class="submit-arrow">→</span>
                         <span class="submit-spinner"></span>
                     </button>
-                    <!-- 底部多彩动态激光进度底边 -->
                     <span class="input-laser-line" id="lock-input-laser"></span>
                 </div>
                 <div class="lock-error" id="lock-error"></div>
@@ -107,7 +69,7 @@
     </div>
 
     <!-- 全局文件选择器 -->
-    <input type="file" id="file-input" multiple accept="image/*" hidden>
+    <input type="file" id="file-input" multiple accept="image/*,.heic,.heif,.avif,.tiff,.dng" hidden>
 
     <!-- 拖拽上传毛玻璃遮罩 -->
     <div id="drop-overlay" class="drop-overlay" aria-hidden="true">
@@ -118,20 +80,19 @@
     </div>
 
     <!-- =========================================================
-         1. 顶部硬朗毛玻璃导航栏 (Windows 10 Acrylic Command Bar)
+         1. 顶部重度毛玻璃导航栏 (Frosted Acrylic Command Bar)
     ========================================================= -->
     <header class="top-glass-header" id="top-bar">
         <div class="glass-dock">
-            <!-- 左侧：硬朗矩形多彩 IMG 标志 + 计数 -->
+            <!-- 左侧：矩形 IMG 标志 + 计数 -->
             <div class="dock-brand-group">
                 <a href="/" class="brand" aria-label="IMG">
-                    <span class="brand-prism-strip"></span>
                     <span class="brand-name">IMG</span>
                     <span class="brand-count" id="storage-stat">0</span>
                 </a>
             </div>
 
-            <!-- 中间：矩形分类导航轨 + 分类按钮 -->
+            <!-- 中间：毛玻璃分类导航轨 + 新建分类按钮 -->
             <div class="dock-categories-group">
                 <nav class="folder-tabs" id="folder-tabs" aria-label="分类">
                     <button class="tab-item active" data-folder="all">全部</button>
@@ -139,10 +100,10 @@
                 <button type="button" class="dock-cat-add" id="btn-new-folder" title="分类管理">+</button>
             </div>
 
-            <!-- 右侧：搜索 + 缩放 + 容量 + 操作 -->
+            <!-- 右侧：搜索 + 缩放 + HDR + 容量 + 操作 -->
             <div class="dock-tools-group">
                 <div class="search-wrap">
-                    <svg class="search-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                    <svg class="search-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
                         <circle cx="11" cy="11" r="7"></circle>
                         <line x1="20" y1="20" x2="16.2" y2="16.2"></line>
                     </svg>
@@ -156,6 +117,9 @@
                     <button type="button" class="zoom-step-btn" id="btn-zoom-in">+</button>
                 </div>
 
+                <!-- HDR 广色域高动态范围开关 -->
+                <button type="button" class="hdr-pill active" id="btn-hdr-toggle" title="切换 HDR 广色域高光渲染与原图直出">HDR</button>
+
                 <button type="button" class="quota-pill" id="btn-quota-detail" title="存储空间">
                     <span class="quota-used" id="quota-pill-text">0 MB</span>
                     <div class="quota-mini-track">
@@ -166,7 +130,7 @@
                 <button type="button" class="glass-btn" id="btn-batch-toggle" title="多选 (B)">多选</button>
                 <button type="button" class="glass-btn primary" id="btn-upload" title="上传">上传</button>
                 <button type="button" class="glass-icon-btn" id="btn-settings" title="设置" aria-label="设置">
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7">
                         <circle cx="12" cy="12" r="3"></circle>
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                     </svg>
@@ -187,7 +151,7 @@
     </div>
 
     <!-- =========================================================
-         2. 主画廊：硬朗玻璃卡片瀑布流
+         2. 主画廊：光学毛玻璃卡片瀑布流
     ========================================================= -->
     <main class="space-main" id="space-main">
         <!-- 骨架屏 -->
@@ -219,7 +183,7 @@
     </div>
 
     <!-- =========================================================
-         3. 移动端底部硬朗毛玻璃栏
+         3. 移动端底部毛玻璃栏
     ========================================================= -->
     <nav class="mobile-bottom-bar" id="mobile-bottom-bar" aria-label="快捷栏">
         <div class="mob-zoom-group">
@@ -263,12 +227,17 @@
     </div>
 
     <!-- =========================================================
-         5. 毛玻璃大图检视层 (Acrylic Viewer)
+         5. HDR 光学毛玻璃大图检视层 (HDR Optical Glass Viewer)
     ========================================================= -->
     <div class="viewer-backdrop" id="viewer-modal" aria-hidden="true">
         <div class="viewer-layout">
             <div class="viewer-stage" id="viewer-stage">
-                <button type="button" class="hd-badge-btn" id="btn-load-hd" hidden>原图</button>
+                <!-- HDR 动态环境光背投层 (从当前照片实时晕染毛玻璃背景) -->
+                <img id="viewer-ambilight" class="viewer-ambilight" alt="" aria-hidden="true">
+                <div class="viewer-top-badges">
+                    <span class="viewer-hdr-badge" id="viewer-hdr-indicator">HDR P3</span>
+                    <button type="button" class="hd-badge-btn" id="btn-load-hd" hidden>加载原图</button>
+                </div>
                 <button type="button" class="mobile-viewer-close" id="mobile-viewer-close">✕</button>
                 <button class="nav-arrow prev" id="viewer-prev">‹</button>
                 <img id="viewer-img" class="viewer-img" alt="">
@@ -331,11 +300,10 @@
     </div>
 
     <!-- =========================================================
-         6. 分类管理硬朗毛玻璃弹窗 (Category Acrylic Modal)
+         6. 分类管理毛玻璃弹窗
     ========================================================= -->
     <div class="settings-backdrop" id="category-modal" aria-hidden="true">
         <div class="settings-card">
-            <div class="acrylic-top-spectrum"></div>
             <div class="settings-head">
                 <span class="settings-title">分类</span>
                 <button class="viewer-close" id="category-modal-close">✕</button>
@@ -357,11 +325,10 @@
     </div>
 
     <!-- =========================================================
-         7. 设置与空间硬朗毛玻璃弹窗 (Settings Acrylic Modal)
+         7. 设置与空间毛玻璃弹窗
     ========================================================= -->
     <div class="settings-backdrop" id="settings-modal" aria-hidden="true">
         <div class="settings-card">
-            <div class="acrylic-top-spectrum"></div>
             <div class="settings-head">
                 <span class="settings-title">设置</span>
                 <button class="viewer-close" id="settings-close">✕</button>
@@ -397,7 +364,7 @@
             <div class="settings-field">
                 <label class="field-label">上传策略</label>
                 <select id="select-upload-mode" class="minimal-input">
-                    <option value="original">原图 + 自动极速缩略图</option>
+                    <option value="original">无损原图（完整保留 Apple/ISO HDR 增益图）</option>
                     <option value="webp-4k">WebP · 4K</option>
                     <option value="webp-2k">WebP · 2.5K</option>
                 </select>
