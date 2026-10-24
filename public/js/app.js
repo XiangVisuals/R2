@@ -102,7 +102,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const PRESET_FOLDER_COLORS = {
         all: '#0f172a',
-        default: '#64748b',
         portfolio: '#2563eb',
         street: '#d97706',
         blog: '#059669',
@@ -112,9 +111,13 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     const PRESET_FOLDER_LABELS = {
-        all: '全部',
-        default: '默认'
+        all: '全部'
     };
+
+    function normalizeFolder(f) {
+        const clean = (f || '').trim();
+        return (clean === 'default' || clean === 'all' || clean === 'uploads') ? '' : clean;
+    }
 
     // 存储用户自定义分类及其专属颜色: Map<folderName, { name, color }>
     const categoryMetaMap = new Map();
@@ -126,8 +129,9 @@ document.addEventListener("DOMContentLoaded", () => {
             const list = JSON.parse(raw);
             if (Array.isArray(list)) {
                 list.forEach(c => {
-                    if (c && c.name) {
-                        categoryMetaMap.set(c.name, { name: c.name, color: c.color || '' });
+                    const name = normalizeFolder(c?.name);
+                    if (name) {
+                        categoryMetaMap.set(name, { name, color: c.color || '' });
                     }
                 });
             }
@@ -136,7 +140,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function saveLocalCategories() {
         try {
-            const arr = Array.from(categoryMetaMap.values());
+            const arr = Array.from(categoryMetaMap.values()).filter(c => normalizeFolder(c?.name));
             localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(arr));
         } catch {}
     }
@@ -161,14 +165,15 @@ document.addEventListener("DOMContentLoaded", () => {
     loadLocalCategories();
 
     function formatFolderDisplayName(folderName) {
-        if (!folderName) return '默认';
-        if (PRESET_FOLDER_LABELS[folderName]) return PRESET_FOLDER_LABELS[folderName];
-        return folderName;
+        const clean = normalizeFolder(folderName);
+        if (!clean) return '全部';
+        if (PRESET_FOLDER_LABELS[clean]) return PRESET_FOLDER_LABELS[clean];
+        return clean;
     }
 
     function getCategoryColor(folderName) {
-        const clean = (folderName || 'default').trim();
-        if (clean === 'all') return '#0f172a';
+        const clean = normalizeFolder(folderName);
+        if (!clean || clean === 'all') return '#64748b';
         const custom = categoryMetaMap.get(clean);
         if (custom && custom.color) return custom.color;
         const lower = clean.toLowerCase();
@@ -181,10 +186,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function getAllCategoryNames() {
-        const set = new Set(['default']);
-        categoryMetaMap.forEach((_, name) => set.add(name));
+        const set = new Set();
+        categoryMetaMap.forEach((_, name) => {
+            const clean = normalizeFolder(name);
+            if (clean) set.add(clean);
+        });
         allImages.forEach(item => {
-            if (item.folder) set.add(item.folder);
+            const clean = normalizeFolder(item.folder);
+            if (clean) set.add(clean);
         });
         return Array.from(set);
     }
@@ -431,7 +440,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const catBytesMap = new Map();
         allImages.forEach(item => {
-            const f = item.folder || 'default';
+            const f = normalizeFolder(item.folder);
             catBytesMap.set(f, (catBytesMap.get(f) || 0) + (Number(item.size) || 0));
         });
 
@@ -448,7 +457,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 .sort((a, b) => b[1] - a[1])
                 .forEach(([folder, bytes]) => {
                     const color = getCategoryColor(folder);
-                    const label = formatFolderDisplayName(folder);
+                    const label = folder ? formatFolderDisplayName(folder) : '未分类';
                     const sharePct = Math.max(2, (bytes / totalUsedBytes) * 100);
 
                     const seg = document.createElement('div');
@@ -472,26 +481,44 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById('btn-quota-detail')?.addEventListener('click', () => openSettings());
 
     /* =========================================================
-       3. 首屏光学星环密码门禁 (Optical Ring Lock Vault)
+       3. 首屏硬朗亚克力矩形棱镜门禁 (Rectangular Prism Acrylic Vault)
     ========================================================= */
     const lockScreen = document.getElementById('lock-screen');
     const lockForm = document.getElementById('lock-form');
     const lockInput = document.getElementById('lock-password-input');
     const lockInputGroup = document.getElementById('lock-input-group');
+    const lockInputLaser = document.getElementById('lock-input-laser');
     const lockToggleVisBtn = document.getElementById('lock-toggle-vis');
     const lockSubmitBtn = document.getElementById('lock-submit-btn');
     const lockEmblemStage = document.getElementById('lock-emblem-stage');
     const lockRippleRing = document.getElementById('lock-ripple-ring');
-    const lockRingOrbit = document.getElementById('lock-ring-orbit');
-    const lockRingProgress = document.getElementById('lock-ring-progress');
     const lockMark = document.getElementById('lock-mark');
-    const lockKeyDots = document.getElementById('lock-key-dots');
+    const lockSpectrumBars = document.getElementById('lock-spectrum-bars');
     const lockError = document.getElementById('lock-error');
     const lockFooterHint = document.getElementById('lock-footer-hint');
     const r2ConnStatus = document.getElementById('r2-conn-status');
     const skeletonStageEl = document.getElementById('skeleton-stage');
 
+    const PRISM_COLORS = [
+        '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1',
+        '#8b5cf6', '#a855f7', '#d946ef', '#ec4899',
+        '#f43f5e', '#f59e0b', '#10b981', '#14b8a6'
+    ];
+
     let typingBumpTimer = null;
+    let autoVerifyTimer = null;
+    let serverAuthHash = '';
+    let serverNeedsFirstSetup = false;
+    let isAutoUnlocking = false;
+
+    async function sha256HexBrowser(text) {
+        if (!window.crypto?.subtle) return '';
+        const data = new TextEncoder().encode(String(text));
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        return Array.from(new Uint8Array(hashBuffer))
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+    }
 
     lockToggleVisBtn?.addEventListener('click', () => {
         if (!lockInput) return;
@@ -501,8 +528,9 @@ document.addEventListener("DOMContentLoaded", () => {
         lockInput.focus();
     });
 
-    function triggerKeystrokeRipple() {
+    function triggerKeystrokeRipple(color) {
         if (!lockRippleRing) return;
+        lockRippleRing.style.setProperty('--ripple-color', color || '#3b82f6');
         lockRippleRing.classList.remove('ripple-active');
         void lockRippleRing.offsetWidth;
         lockRippleRing.classList.add('ripple-active');
@@ -514,48 +542,76 @@ document.addEventListener("DOMContentLoaded", () => {
         lockMark?.classList.toggle('has-input', len > 0);
         lockInputGroup?.classList.toggle('has-val', len > 0);
 
-        const circumference = 226.2;
-        const fillRatio = Math.min(len, 10) / 10;
-        if (lockRingProgress) {
-            lockRingProgress.style.strokeDashoffset = String(circumference * (1 - fillRatio));
-        }
-        if (lockRingOrbit) {
-            lockRingOrbit.style.transform = `rotate(${len * 28}deg)`;
+        // 1. 输入框底部多彩激光进度条
+        const fillPct = Math.min(100, (len / 10) * 100);
+        if (lockInputLaser) {
+            lockInputLaser.style.width = `${fillPct}%`;
         }
 
-        if (lockKeyDots) {
-            const maxDots = Math.min(len, 16);
-            const currentDots = lockKeyDots.children.length;
-            if (maxDots > currentDots) {
-                for (let i = currentDots; i < maxDots; i++) {
-                    const dot = document.createElement('span');
-                    dot.className = 'key-dot';
-                    lockKeyDots.appendChild(dot);
+        // 2. 顶部矩形 IMG 内部 12 段式多彩频谱实时跳动充能
+        if (lockSpectrumBars) {
+            const segs = lockSpectrumBars.querySelectorAll('.spec-seg');
+            const litCount = len === 0 ? 0 : Math.min(12, Math.max(2, Math.ceil((len / 10) * 12)));
+            segs.forEach((seg, idx) => {
+                if (idx < litCount) {
+                    seg.classList.add('lit');
+                    const wave = ((len * 7 + idx * 5) % 9) + 6;
+                    seg.style.height = `${wave}px`;
+                } else {
+                    seg.classList.remove('lit');
+                    seg.style.height = '3px';
                 }
-            } else if (maxDots < currentDots) {
-                while (lockKeyDots.children.length > maxDots) {
-                    lockKeyDots.removeChild(lockKeyDots.lastChild);
-                }
-            }
+            });
         }
     }
 
-    lockInput?.addEventListener('input', () => {
+    lockInput?.addEventListener('input', async () => {
+        if (isUnlocked || isAutoUnlocking) return;
         if (lockError && !lockSubmitBtn?.classList.contains('verifying')) {
             lockError.textContent = '';
             lockError.classList.remove('ok-msg');
         }
         lockEmblemStage?.classList.remove('unlocked-state');
-        syncLockTypingVisualizer();
-        triggerKeystrokeRipple();
+        const rawVal = (lockInput?.value || '').trim();
+        const len = rawVal.length;
+        const activeColor = PRISM_COLORS[len % PRISM_COLORS.length];
 
+        syncLockTypingVisualizer();
+        triggerKeystrokeRipple(activeColor);
+
+        lockInputGroup?.style.setProperty('--pulse-color', activeColor);
         lockMark?.classList.add('typing-bump');
         lockInputGroup?.classList.add('typing-pulse');
         clearTimeout(typingBumpTimer);
         typingBumpTimer = setTimeout(() => {
             lockMark?.classList.remove('typing-bump');
             lockInputGroup?.classList.remove('typing-pulse');
-        }, 160);
+        }, 180);
+
+        clearTimeout(autoVerifyTimer);
+        if (!rawVal || serverNeedsFirstSetup) return;
+
+        // 1. 若已拿到云端密码 SHA-256 摘要，浏览器本地 0ms 比对，输入正确的一瞬间直接进入！
+        if (serverAuthHash) {
+            const currentHash = await sha256HexBrowser(rawVal);
+            if (currentHash && currentHash === serverAuthHash && !isUnlocked && !isAutoUnlocking) {
+                isAutoUnlocking = true;
+                lockEmblemStage?.classList.add('unlocked-state');
+                await tryUnlockAndLoad(rawVal, false, true);
+                isAutoUnlocking = false;
+            }
+            return;
+        }
+
+        // 2. 兜底：若状态探测尚未返回摘要，停顿 220ms 后静默校验，正确则直接进入，不报错不抖动
+        autoVerifyTimer = setTimeout(async () => {
+            if (isUnlocked || isAutoUnlocking) return;
+            const latestVal = (lockInput?.value || '').trim();
+            if (!latestVal || latestVal.length < 3) return;
+            isAutoUnlocking = true;
+            await tryUnlockAndLoad(latestVal, false, true);
+            isAutoUnlocking = false;
+        }, 220);
     });
 
     function unlockUI() {
@@ -568,7 +624,7 @@ document.addEventListener("DOMContentLoaded", () => {
             lockError.textContent = '';
             lockError.classList.remove('ok-msg');
         }
-        dismissSiteLoader(80);
+        dismissSiteLoader(60);
     }
 
     function showLockUI(hintMessage = '') {
@@ -583,8 +639,8 @@ document.addEventListener("DOMContentLoaded", () => {
             lockError.classList.remove('ok-msg');
             lockError.textContent = hintMessage;
         }
-        dismissSiteLoader(120);
-        setTimeout(() => lockInput?.focus(), 120);
+        dismissSiteLoader(100);
+        setTimeout(() => lockInput?.focus(), 100);
     }
 
     function triggerLockShake(msg) {
@@ -607,29 +663,36 @@ document.addEventListener("DOMContentLoaded", () => {
             const ct = res.headers.get('content-type') || '';
             if (!ct.includes('application/json')) return;
             const info = await res.json();
-            if (lockFooterHint) {
-                if (info.r2Bound && info.needsFirstSetup) {
-                    lockFooterHint.textContent = '首次输入密码将自动加密锁定';
-                } else if (!info.r2Bound) {
-                    lockFooterHint.textContent = '请绑定 R2 存储桶 (BUCKET)';
-                } else {
-                    lockFooterHint.textContent = '';
+            if (info.authHash) serverAuthHash = info.authHash;
+            serverNeedsFirstSetup = Boolean(info.needsFirstSetup);
+
+            // 如果用户在 status 返回前已经输入了正确密码，立即触发自动解锁
+            const currentTyped = (lockInput?.value || '').trim();
+            if (serverAuthHash && currentTyped && !isUnlocked && !isAutoUnlocking) {
+                const typedHash = await sha256HexBrowser(currentTyped);
+                if (typedHash === serverAuthHash) {
+                    isAutoUnlocking = true;
+                    lockEmblemStage?.classList.add('unlocked-state');
+                    await tryUnlockAndLoad(currentTyped, false, true);
+                    isAutoUnlocking = false;
                 }
             }
         } catch {}
     }
 
-    async function tryUnlockAndLoad(passwordAttempt, isInitialAutoCheck = false) {
-        lockSubmitBtn?.classList.add('verifying');
+    async function tryUnlockAndLoad(passwordAttempt, isInitialAutoCheck = false, isSilentTypingCheck = false) {
+        if (!isSilentTypingCheck) {
+            lockSubmitBtn?.classList.add('verifying');
+        }
 
-        // 如果本地已有缓存的云端快照且是自动登录，先在 <20ms 内瞬时渲染首屏，避免国内等待 API 期间白屏
+        // 如果本地已有缓存的云端快照且是自动登录，先在 <20ms 内瞬时渲染首屏
         const cachedSnapshot = isInitialAutoCheck ? loadCloudSnapshot() : null;
         if (cachedSnapshot && cachedSnapshot.length > 0) {
             isR2Connected = true;
-            allImages = cachedSnapshot;
+            allImages = cachedSnapshot.map(item => ({ ...item, folder: normalizeFolder(item.folder) }));
             unlockUI();
             renderSpace();
-        } else if (skeletonStageEl) {
+        } else if (skeletonStageEl && !isSilentTypingCheck) {
             skeletonStageEl.hidden = false;
         }
 
@@ -644,7 +707,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!isLocalhost) {
                     if (skeletonStageEl) skeletonStageEl.hidden = true;
                     dismissSiteLoader(80);
-                    if (!cachedSnapshot) {
+                    if (!cachedSnapshot && !isSilentTypingCheck) {
                         triggerLockShake('连接异常，请刷新重试');
                     }
                     return false;
@@ -658,8 +721,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
                 adminToken = passwordAttempt;
                 localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
-                allImages = loadLocalItems();
-                if (r2ConnStatus) r2ConnStatus.textContent = '本地预览模式';
+                allImages = loadLocalItems().map(item => ({ ...item, folder: normalizeFolder(item.folder) }));
                 if (skeletonStageEl) skeletonStageEl.hidden = true;
                 lockEmblemStage?.classList.add('unlocked-state');
                 unlockUI();
@@ -669,8 +731,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const data = await res.json();
 
-            // 1. 密码错误：严格拦截并清除失效快照
+            // 1. 密码错误：若只是打字过程中的静默探测，不报错不抖动；若是回车提交则提示错误
             if (res.status === 401 || res.status === 403 || data.locked || !data.isAdmin) {
+                if (isSilentTypingCheck) {
+                    return false;
+                }
                 localStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
                 localStorage.removeItem(STORAGE_KEYS.CLOUD_SNAPSHOT);
                 adminToken = '';
@@ -684,25 +749,25 @@ document.addEventListener("DOMContentLoaded", () => {
                 return false;
             }
 
-            // 2. 密码验证通过
+            // 2. 密码验证通过 -> 立即直接进入画廊！
             adminToken = passwordAttempt;
             localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
+            sha256HexBrowser(passwordAttempt).then(h => { if (h) serverAuthHash = h; });
+            serverNeedsFirstSetup = false;
+
             isR2Connected = Boolean(data.r2Bound);
             lockEmblemStage?.classList.add('unlocked-state');
-
-            if (lockError && !isInitialAutoCheck) {
-                lockError.classList.add('ok-msg');
-                lockError.textContent = '验证通过';
-            }
 
             if (data.firstTimeInitialized) {
                 toast('密码已加密锁定至 R2');
             }
 
             if (Array.isArray(data.categories)) {
+                categoryMetaMap.clear();
                 data.categories.forEach(c => {
-                    if (c && c.name) {
-                        categoryMetaMap.set(c.name, { name: c.name, color: c.color || '' });
+                    const cleanName = normalizeFolder(c?.name);
+                    if (cleanName) {
+                        categoryMetaMap.set(cleanName, { name: cleanName, color: c.color || '' });
                     }
                 });
                 saveLocalCategories();
@@ -710,21 +775,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (!isR2Connected) {
                 allImages = [];
-                if (r2ConnStatus) {
-                    r2ConnStatus.textContent = '未检测到 R2 绑定 (BUCKET)';
-                }
                 if (skeletonStageEl) skeletonStageEl.hidden = true;
                 unlockUI();
                 renderSpace();
                 return true;
             }
 
-            allImages = Array.isArray(data.items) ? data.items : [];
+            allImages = (Array.isArray(data.items) ? data.items : []).map(item => ({
+                ...item,
+                folder: normalizeFolder(item.folder)
+            }));
             saveCloudSnapshot(allImages);
-
-            if (r2ConnStatus) {
-                r2ConnStatus.textContent = `R2 已连接 · ${allImages.length} 项`;
-            }
 
             if (skeletonStageEl) skeletonStageEl.hidden = true;
             unlockUI();
@@ -732,6 +793,7 @@ document.addEventListener("DOMContentLoaded", () => {
             updateThumbAccelStatusUI();
             return true;
         } catch {
+            if (isSilentTypingCheck) return false;
             if (skeletonStageEl) skeletonStageEl.hidden = true;
             dismissSiteLoader(80);
             if (cachedSnapshot && cachedSnapshot.length > 0) {
@@ -752,7 +814,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             adminToken = passwordAttempt;
             localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
-            allImages = loadLocalItems();
+            allImages = loadLocalItems().map(item => ({ ...item, folder: normalizeFolder(item.folder) }));
             unlockUI();
             renderSpace();
             return true;
@@ -761,16 +823,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     lockForm?.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (isUnlocked || isAutoUnlocking) return;
         const val = (lockInput?.value || '').trim();
         if (!val) {
             triggerLockShake('请输入密码');
             return;
         }
-        if (lockError) {
-            lockError.classList.add('ok-msg');
-            lockError.textContent = '验证中...';
-        }
-        await tryUnlockAndLoad(val, false);
+        await tryUnlockAndLoad(val, false, false);
     });
 
     /* =========================================================
@@ -1177,10 +1236,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const dropTargetHint = document.getElementById('drop-target-hint');
 
     async function moveImagesToCategory(keys, targetFolder) {
-        const cleanFolder = (targetFolder || 'default').trim();
+        const cleanFolder = normalizeFolder(targetFolder);
         if (!keys || keys.length === 0) return false;
 
-        if (!categoryMetaMap.has(cleanFolder) && cleanFolder !== 'default') {
+        if (cleanFolder && !categoryMetaMap.has(cleanFolder)) {
             categoryMetaMap.set(cleanFolder, { name: cleanFolder, color: getCategoryColor(cleanFolder) });
             saveLocalCategories();
         }
@@ -1216,7 +1275,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (isR2Connected) saveCloudSnapshot(allImages);
         else saveLocalItems();
         renderSpace();
-        toast(`已移入「${formatFolderDisplayName(cleanFolder)}」`);
+        if (cleanFolder) {
+            toast(`已移入「${formatFolderDisplayName(cleanFolder)}」`);
+        }
         return true;
     }
 
@@ -1257,14 +1318,20 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!folderTabsEl) return;
 
         const folderCounts = new Map();
-        folderCounts.set('default', 0);
         categoryMetaMap.forEach((_, name) => {
-            if (!folderCounts.has(name)) folderCounts.set(name, 0);
+            const clean = normalizeFolder(name);
+            if (clean && !folderCounts.has(clean)) folderCounts.set(clean, 0);
         });
         allImages.forEach(item => {
-            const f = item.folder || 'default';
-            folderCounts.set(f, (folderCounts.get(f) || 0) + 1);
+            const f = normalizeFolder(item.folder);
+            if (f) {
+                folderCounts.set(f, (folderCounts.get(f) || 0) + 1);
+            }
         });
+
+        if (currentFolder !== 'all' && !folderCounts.has(currentFolder)) {
+            currentFolder = 'all';
+        }
 
         folderTabsEl.innerHTML = '';
 
@@ -1284,7 +1351,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         folderTabsEl.appendChild(allBtn);
 
-        // 2. 各个分类标签
+        // 2. 用户创建的各个分类标签（不再强制生成默认分类）
         const folderList = Array.from(folderCounts.keys());
         folderList.forEach(folder => {
             const count = folderCounts.get(folder) || 0;
@@ -1322,10 +1389,11 @@ document.addEventListener("DOMContentLoaded", () => {
             batchMoveSelect.appendChild(newOpt);
         }
 
-        const targetUploadFolder = currentFolder === 'all' ? 'default' : currentFolder;
-        const targetLabel = formatFolderDisplayName(targetUploadFolder);
+        const targetUploadFolder = currentFolder === 'all' ? '' : currentFolder;
         if (dropTargetHint) {
-            dropTargetHint.textContent = `上传至「${targetLabel}」`;
+            dropTargetHint.textContent = targetUploadFolder
+                ? `上传至「${formatFolderDisplayName(targetUploadFolder)}」`
+                : '松开上传';
         }
     }
 
@@ -1365,13 +1433,15 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderCategoryStudioList() {
         if (!catManageListEl) return;
         const folderCounts = new Map();
-        folderCounts.set('default', 0);
         categoryMetaMap.forEach((_, name) => {
-            if (!folderCounts.has(name)) folderCounts.set(name, 0);
+            const clean = normalizeFolder(name);
+            if (clean && !folderCounts.has(clean)) folderCounts.set(clean, 0);
         });
         allImages.forEach(item => {
-            const f = item.folder || 'default';
-            folderCounts.set(f, (folderCounts.get(f) || 0) + 1);
+            const f = normalizeFolder(item.folder);
+            if (f) {
+                folderCounts.set(f, (folderCounts.get(f) || 0) + 1);
+            }
         });
 
         const folders = Array.from(folderCounts.keys());
@@ -1381,11 +1451,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
         catManageListEl.innerHTML = '';
 
+        if (folders.length === 0) {
+            catManageListEl.innerHTML = `<div style="padding:14px 8px;text-align:center;color:var(--ink-3);font-size:12px;">暂无分类，可在上方输入名称添加</div>`;
+            return;
+        }
+
         folders.forEach(folder => {
             const count = folderCounts.get(folder) || 0;
             const color = getCategoryColor(folder);
             const label = formatFolderDisplayName(folder);
-            const isDefault = folder === 'default';
 
             const row = document.createElement('div');
             row.className = 'cat-manage-row';
@@ -1397,8 +1471,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
                 <div class="cat-row-actions">
                     <button type="button" class="cat-mini-btn btn-cat-view">查看</button>
-                    ${isDefault ? '' : '<button type="button" class="cat-mini-btn btn-cat-rename">改名</button>'}
-                    ${isDefault ? '' : '<button type="button" class="cat-mini-btn danger btn-cat-delete">删除</button>'}
+                    <button type="button" class="cat-mini-btn btn-cat-rename">改名</button>
+                    <button type="button" class="cat-mini-btn danger btn-cat-delete">删除</button>
                 </div>
             `;
 
@@ -1420,14 +1494,14 @@ document.addEventListener("DOMContentLoaded", () => {
             row.querySelector('.btn-cat-rename')?.addEventListener('click', async () => {
                 const nextRaw = prompt(`重命名「${label}」为：`, folder);
                 if (!nextRaw) return;
-                const cleanNext = nextRaw.trim().replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '-');
+                const cleanNext = normalizeFolder(nextRaw.trim().replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '-'));
                 if (!cleanNext || cleanNext === folder) return;
 
                 const oldColor = getCategoryColor(folder);
                 categoryMetaMap.delete(folder);
                 categoryMetaMap.set(cleanNext, { name: cleanNext, color: oldColor });
 
-                const affectedKeys = allImages.filter(i => (i.folder || 'default') === folder).map(i => i.key);
+                const affectedKeys = allImages.filter(i => normalizeFolder(i.folder) === folder).map(i => i.key);
                 if (affectedKeys.length > 0) {
                     await moveImagesToCategory(affectedKeys, cleanNext);
                 } else {
@@ -1442,14 +1516,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
             row.querySelector('.btn-cat-delete')?.addEventListener('click', async () => {
                 const msg = count > 0
-                    ? `删除分类「${label}」？（其中 ${count} 张图片将移入默认分类）`
+                    ? `删除分类「${label}」？（图片不会丢失，将保留在全部列表中）`
                     : `删除分类「${label}」？`;
                 if (!confirm(msg)) return;
 
                 categoryMetaMap.delete(folder);
-                const affectedKeys = allImages.filter(i => (i.folder || 'default') === folder).map(i => i.key);
+                const affectedKeys = allImages.filter(i => normalizeFolder(i.folder) === folder).map(i => i.key);
                 if (affectedKeys.length > 0) {
-                    await moveImagesToCategory(affectedKeys, 'default');
+                    await moveImagesToCategory(affectedKeys, '');
                 } else {
                     await syncCategoriesToCloud();
                 }
@@ -1487,8 +1561,8 @@ document.addEventListener("DOMContentLoaded", () => {
             inputNewCatName?.focus();
             return;
         }
-        const clean = raw.replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '-');
-        if (!clean || clean === 'all') {
+        const clean = normalizeFolder(raw.replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '-'));
+        if (!clean) {
             toast('名称无效');
             return;
         }
@@ -1535,8 +1609,13 @@ document.addEventListener("DOMContentLoaded", () => {
     function openQuickCatPopover(item, anchorEl) {
         if (!quickCatPopover || !quickCatListEl || !item) return;
         activePopoverItemKey = item.key;
-        const currentItemFolder = item.folder || 'default';
+        const currentItemFolder = normalizeFolder(item.folder);
         const allCats = getAllCategoryNames();
+
+        if (allCats.length === 0) {
+            openCategoryModal(true, [item.key]);
+            return;
+        }
 
         quickCatListEl.innerHTML = '';
         allCats.forEach(folder => {
@@ -1622,10 +1701,10 @@ document.addEventListener("DOMContentLoaded", () => {
         allImages.sort((a, b) => new Date(b.uploaded || 0).getTime() - new Date(a.uploaded || 0).getTime());
 
         filteredImages = allImages.filter(item => {
-            const f = item.folder || 'default';
+            const f = normalizeFolder(item.folder);
             if (currentFolder !== 'all' && f !== currentFolder) return false;
             if (!searchQuery) return true;
-            const hay = [item.title, item.originalName, item.key, item.folder, formatFolderDisplayName(f), item.exif?.camera].filter(Boolean).join(' ').toLowerCase();
+            const hay = [item.title, item.originalName, item.key, f, item.exif?.camera].filter(Boolean).join(' ').toLowerCase();
             return hay.includes(searchQuery);
         });
 
@@ -1725,8 +1804,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     e.dataTransfer?.setData('text/xiang-photo-key', item.key);
                 });
 
-                const folderName = item.folder || 'default';
-                const folderLabel = formatFolderDisplayName(folderName);
+                const folderName = normalizeFolder(item.folder);
+                const folderLabel = folderName ? formatFolderDisplayName(folderName) : '+ 分类';
                 const catColor = getCategoryColor(folderName);
                 const name = item.title || item.originalName || item.key.split('/').pop();
                 const fullUrl = getFullUrl(item);
@@ -1740,8 +1819,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         <img alt="${name}" decoding="async">
                         <div class="thumb-retry-overlay" hidden><span>点击重试</span></div>
                         <div class="photo-glass-bar">
-                            <button type="button" class="cat-badge" style="--cat-color: ${catColor}" title="切换分类">
-                                <span class="cat-badge-dot"></span>
+                            <button type="button" class="cat-badge" style="--cat-color: ${catColor}" title="设置分类">
+                                ${folderName ? '<span class="cat-badge-dot"></span>' : ''}
                                 <span>${folderLabel}</span>
                             </button>
                             <button type="button" class="thumb-copy-btn" title="复制直链">复制</button>
@@ -2179,8 +2258,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function uploadFiles(files, explicitFolder = null) {
-        const targetFolder = explicitFolder || (currentFolder === 'all' ? 'default' : currentFolder);
-        const targetLabel = formatFolderDisplayName(targetFolder);
+        const targetFolder = normalizeFolder(explicitFolder !== null ? explicitFolder : (currentFolder === 'all' ? '' : currentFolder));
+        const targetLabel = targetFolder ? formatFolderDisplayName(targetFolder) : '';
         if (uploadRibbon) uploadRibbon.hidden = false;
 
         let completed = 0;
@@ -2232,7 +2311,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         reader.readAsDataURL(thumbBlob || file);
                     });
                     newItem = {
-                        key: `${targetFolder}/${Date.now()}-${file.name}`,
+                        key: `${targetFolder || 'uploads'}/${Date.now()}-${file.name}`,
                         url: dataUrl,
                         thumbUrl: dataUrl,
                         lqip,
@@ -2263,7 +2342,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         if (completed > 0) {
-            toast(`已上传 ${completed} 项至「${targetLabel}」`);
+            toast(targetLabel ? `已上传 ${completed} 项至「${targetLabel}」` : `已上传 ${completed} 项`);
         }
         setTimeout(() => {
             if (uploadRibbon) uploadRibbon.hidden = true;
@@ -2299,7 +2378,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderViewerCategoryChips(currentItem) {
         if (!viewerCatChipsEl || !currentItem) return;
-        const currFolder = currentItem.folder || 'default';
+        const currFolder = normalizeFolder(currentItem.folder);
         const allCats = getAllCategoryNames();
         viewerCatChipsEl.innerHTML = '';
 
@@ -2345,7 +2424,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }
 
-        const folderName = item.folder || 'default';
+        const folderName = normalizeFolder(item.folder);
         if (metaTitleInput) metaTitleInput.value = item.title || item.originalName || '';
         if (metaFolderInput) metaFolderInput.value = folderName;
         if (viewerFolderDot) viewerFolderDot.style.background = getCategoryColor(folderName);
@@ -2435,9 +2514,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const item = filteredImages[activeViewerIdx];
         if (!item) return;
         const newTitle = metaTitleInput.value.trim();
-        const newFolder = (metaFolderInput.value.trim() || 'default').replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '-');
+        const newFolder = normalizeFolder(metaFolderInput.value.trim().replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '-'));
 
-        if (newFolder !== 'default' && !categoryMetaMap.has(newFolder)) {
+        if (newFolder && !categoryMetaMap.has(newFolder)) {
             categoryMetaMap.set(newFolder, { name: newFolder, color: getCategoryColor(newFolder) });
             saveLocalCategories();
         }

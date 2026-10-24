@@ -4,30 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>IMG</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' rx='7' fill='%23111115'/%3E%3Ccircle cx='11.5' cy='11.5' r='2.5' fill='%23fff'/%3E%3Cpath d='M6 24l7-8 5 5.5 4-4.5 4 7H6z' fill='%23fff' opacity='0.9'/%3E%3C/svg%3E" type="image/svg+xml">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%2306b6d4'/%3E%3Cstop offset='50%25' stop-color='%238b5cf6'/%3E%3Cstop offset='100%25' stop-color='%23ec4899'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='2' y='2' width='28' height='28' rx='2' fill='%230f172a' stroke='url(%23g)' stroke-width='2'/%3E%3Cpath d='M6 23l6.5-7.5 4.5 5 4-4.5 5 7H6z' fill='%23fff'/%3E%3Crect x='7' y='8' width='4' height='4' fill='%2306b6d4'/%3E%3C/svg%3E" type="image/svg+xml">
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body class="locked">
 
-    <!-- 环境光氛围底幕 (毛玻璃折射光源) -->
+    <!-- 多彩极光环境折射底幕 (Windows 10 Acrylic 玻璃折射光源) -->
     <div class="ambient-canvas" aria-hidden="true">
         <div class="ambient-orb orb-1"></div>
         <div class="ambient-orb orb-2"></div>
         <div class="ambient-orb orb-3"></div>
+        <div class="ambient-grid"></div>
     </div>
 
     <!-- =========================================================
-         0-A. 网站启动毛玻璃加载层 (Frosted Preloader)
+         0-A. 网站启动多彩矩形棱镜加载动画 (Rectangular Prism Loader)
     ========================================================= -->
     <div id="site-loader" class="site-loader">
-        <div class="loader-glass-pill">
-            <div class="loader-spinner-ring">
-                <svg viewBox="0 0 48 48">
-                    <circle class="ring-bg" cx="24" cy="24" r="19" />
-                    <circle class="ring-fg" cx="24" cy="24" r="19" />
-                </svg>
+        <div class="loader-acrylic-box">
+            <div class="loader-prism-edge"></div>
+            <div class="loader-head-row">
+                <span class="loader-logo-rect">IMG</span>
+                <span class="loader-status-tag" id="site-loader-text">SYNC</span>
             </div>
-            <span class="loader-logo">IMG</span>
+            <!-- 12 段式多彩律动频谱矩阵 -->
+            <div class="loader-spectrum" aria-hidden="true">
+                <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span><span style="--i:3"></span>
+                <span style="--i:4"></span><span style="--i:5"></span><span style="--i:6"></span><span style="--i:7"></span>
+                <span style="--i:8"></span><span style="--i:9"></span><span style="--i:10"></span><span style="--i:11"></span>
+            </div>
             <div class="loader-bar-wrap">
                 <div class="loader-bar-fill" id="site-loader-bar"></div>
             </div>
@@ -35,26 +40,56 @@
     </div>
 
     <!-- =========================================================
-         0-B. 毛玻璃密码门禁 (Frosted Glass Lock Card)
+         0-B. Windows 10 硬朗亚克力毛玻璃门禁 + 矩形多彩 IMG 能量核
     ========================================================= -->
     <div id="lock-screen" class="lock-screen">
         <div class="lock-glass-card" id="lock-box">
-            <!-- 动态光学圆环 + IMG 标志 -->
+            <!-- 顶部流光彩条 -->
+            <div class="acrylic-top-spectrum" id="lock-top-spectrum"></div>
+
+            <!-- 矩形多彩棱镜 IMG 核心 (取代原圆形设计) -->
             <div class="lock-emblem-stage" id="lock-emblem-stage">
-                <span class="lock-ripple-ring" id="lock-ripple-ring"></span>
-                <svg class="lock-aperture-svg" id="lock-aperture-svg" viewBox="0 0 88 88" aria-hidden="true">
-                    <circle class="lock-ring-track" cx="44" cy="44" r="36" />
-                    <circle class="lock-ring-orbit" id="lock-ring-orbit" cx="44" cy="44" r="28" />
-                    <circle class="lock-ring-progress" id="lock-ring-progress" cx="44" cy="44" r="36" />
-                </svg>
-                <span class="lock-logo-core" id="lock-mark">IMG</span>
+                <span class="lock-ripple-rect" id="lock-ripple-ring"></span>
+
+                <div class="lock-rect-monolith" id="lock-mark">
+                    <!-- 四角精密硬朗准星边角 -->
+                    <i class="rect-corner tl"></i>
+                    <i class="rect-corner tr"></i>
+                    <i class="rect-corner bl"></i>
+                    <i class="rect-corner br"></i>
+
+                    <!-- 激光扫描线 -->
+                    <span class="rect-scanline"></span>
+
+                    <!-- 矩形核心文字 -->
+                    <div class="rect-logo-row">
+                        <span class="rect-prism-bar"></span>
+                        <span class="rect-logo-text">IMG</span>
+                    </div>
+
+                    <!-- 12 段式矩形多彩能量频谱条 (随打字实时跳动充能，不与输入框重叠) -->
+                    <div class="lock-spectrum-bars" id="lock-spectrum-bars" aria-hidden="true">
+                        <span class="spec-seg" style="--seg-idx:0"></span>
+                        <span class="spec-seg" style="--seg-idx:1"></span>
+                        <span class="spec-seg" style="--seg-idx:2"></span>
+                        <span class="spec-seg" style="--seg-idx:3"></span>
+                        <span class="spec-seg" style="--seg-idx:4"></span>
+                        <span class="spec-seg" style="--seg-idx:5"></span>
+                        <span class="spec-seg" style="--seg-idx:6"></span>
+                        <span class="spec-seg" style="--seg-idx:7"></span>
+                        <span class="spec-seg" style="--seg-idx:8"></span>
+                        <span class="spec-seg" style="--seg-idx:9"></span>
+                        <span class="spec-seg" style="--seg-idx:10"></span>
+                        <span class="spec-seg" style="--seg-idx:11"></span>
+                    </div>
+                </div>
             </div>
 
             <form id="lock-form" class="lock-form" autocomplete="off">
                 <div class="lock-input-group" id="lock-input-group">
                     <input type="password" id="lock-password-input" class="lock-input" placeholder="输入密码" autofocus>
                     <button type="button" id="lock-toggle-vis" class="lock-vis-btn" title="显示/隐藏" aria-label="显示密码">
-                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter">
                             <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/>
                             <circle cx="12" cy="12" r="3"/>
                         </svg>
@@ -63,8 +98,9 @@
                         <span class="submit-arrow">→</span>
                         <span class="submit-spinner"></span>
                     </button>
+                    <!-- 底部多彩动态激光进度底边 -->
+                    <span class="input-laser-line" id="lock-input-laser"></span>
                 </div>
-                <div class="lock-key-dots" id="lock-key-dots" aria-hidden="true"></div>
                 <div class="lock-error" id="lock-error"></div>
             </form>
         </div>
@@ -82,19 +118,20 @@
     </div>
 
     <!-- =========================================================
-         1. 悬浮毛玻璃顶栏 (Floating Frosted Glass Dock)
+         1. 顶部硬朗毛玻璃导航栏 (Windows 10 Acrylic Command Bar)
     ========================================================= -->
     <header class="top-glass-header" id="top-bar">
         <div class="glass-dock">
-            <!-- 左侧：IMG 标志 + 计数 -->
+            <!-- 左侧：硬朗矩形多彩 IMG 标志 + 计数 -->
             <div class="dock-brand-group">
                 <a href="/" class="brand" aria-label="IMG">
+                    <span class="brand-prism-strip"></span>
                     <span class="brand-name">IMG</span>
                     <span class="brand-count" id="storage-stat">0</span>
                 </a>
             </div>
 
-            <!-- 中间：毛玻璃分类导航轨 + 分类按钮 -->
+            <!-- 中间：矩形分类导航轨 + 分类按钮 -->
             <div class="dock-categories-group">
                 <nav class="folder-tabs" id="folder-tabs" aria-label="分类">
                     <button class="tab-item active" data-folder="all">全部</button>
@@ -138,7 +175,7 @@
         </div>
     </header>
 
-    <!-- 顶部毛玻璃进度胶囊 -->
+    <!-- 顶部毛玻璃上传进度条 -->
     <div class="upload-ribbon" id="upload-ribbon" hidden>
         <div class="ribbon-track">
             <div class="ribbon-bar" id="ribbon-bar"></div>
@@ -150,7 +187,7 @@
     </div>
 
     <!-- =========================================================
-         2. 主画廊：纯净无冗余真实比例瀑布流
+         2. 主画廊：硬朗玻璃卡片瀑布流
     ========================================================= -->
     <main class="space-main" id="space-main">
         <!-- 骨架屏 -->
@@ -182,7 +219,7 @@
     </div>
 
     <!-- =========================================================
-         3. 移动端底部悬浮毛玻璃栏
+         3. 移动端底部硬朗毛玻璃栏
     ========================================================= -->
     <nav class="mobile-bottom-bar" id="mobile-bottom-bar" aria-label="快捷栏">
         <div class="mob-zoom-group">
@@ -196,7 +233,7 @@
         <div class="mob-right-group">
             <button type="button" class="mob-tool-btn" id="mob-btn-cat">分类</button>
             <button type="button" class="mob-tool-btn" id="mob-btn-batch">多选</button>
-            <button type="button" class="mob-tool-btn" id="mob-btn-quota">设置</button>
+            <button type="button" class="mob-tool-btn" id="mob-btn-settings">设置</button>
         </div>
     </nav>
 
@@ -226,7 +263,7 @@
     </div>
 
     <!-- =========================================================
-         5. 毛玻璃大图检视层 (Frosted Glass Viewer)
+         5. 毛玻璃大图检视层 (Acrylic Viewer)
     ========================================================= -->
     <div class="viewer-backdrop" id="viewer-modal" aria-hidden="true">
         <div class="viewer-layout">
@@ -294,10 +331,11 @@
     </div>
 
     <!-- =========================================================
-         6. 分类管理毛玻璃弹窗 (Category Glass Modal)
+         6. 分类管理硬朗毛玻璃弹窗 (Category Acrylic Modal)
     ========================================================= -->
     <div class="settings-backdrop" id="category-modal" aria-hidden="true">
         <div class="settings-card">
+            <div class="acrylic-top-spectrum"></div>
             <div class="settings-head">
                 <span class="settings-title">分类</span>
                 <button class="viewer-close" id="category-modal-close">✕</button>
@@ -319,10 +357,11 @@
     </div>
 
     <!-- =========================================================
-         7. 设置与空间毛玻璃弹窗 (Settings Glass Modal)
+         7. 设置与空间硬朗毛玻璃弹窗 (Settings Acrylic Modal)
     ========================================================= -->
     <div class="settings-backdrop" id="settings-modal" aria-hidden="true">
         <div class="settings-card">
+            <div class="acrylic-top-spectrum"></div>
             <div class="settings-head">
                 <span class="settings-title">设置</span>
                 <button class="viewer-close" id="settings-close">✕</button>

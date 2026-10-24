@@ -233,6 +233,10 @@ function formatR2Object(obj, request, env) {
 
   const fullUrl = buildPublicUrl(obj.key, request, env);
   const thumbUrl = meta.thumbKey ? buildPublicUrl(meta.thumbKey, request, env) : fullUrl;
+  const rawFolder = meta.folder !== undefined
+    ? meta.folder
+    : (obj.key.includes("/") ? obj.key.split("/")[0] : "");
+  const cleanFolder = (rawFolder === "default" || rawFolder === "uploads") ? "" : rawFolder;
 
   return {
     key: obj.key,
@@ -243,7 +247,7 @@ function formatR2Object(obj, request, env) {
     size: obj.size,
     uploaded: obj.uploaded ? new Date(obj.uploaded).toISOString() : new Date().toISOString(),
     etag: obj.httpEtag,
-    folder: meta.folder || (obj.key.includes("/") ? obj.key.split("/")[0] : "default"),
+    folder: cleanFolder,
     originalName: meta.originalName || obj.key.split("/").pop(),
     title: meta.title || meta.originalName || obj.key.split("/").pop(),
     width: meta.width ? Number(meta.width) : 0,
@@ -255,7 +259,7 @@ function formatR2Object(obj, request, env) {
 
 function getEdgeListCacheRequest(request) {
   const origin = new URL(request.url).origin;
-  return new Request(`${origin}/__edge_cache__/api_images_list_v4`, { method: "GET" });
+  return new Request(`${origin}/__edge_cache__/api_images_list_v5`, { method: "GET" });
 }
 
 async function purgeEdgeListCache(request, context) {
@@ -281,16 +285,19 @@ export async function onRequestGet(context) {
 
   const hasR2 = Boolean(bucket);
 
-  // Status probe without unlocking
+  // Status probe without unlocking (includes SHA-256 authHash for instant auto-unlock upon typing correct password)
   if (url.searchParams.get("action") === "status") {
     const r2AuthHash = hasR2 && !adminPassword ? await readR2AuthHash(bucket) : null;
-    const hasPassword = Boolean(adminPassword || r2AuthHash);
+    const envAuthHash = adminPassword ? await sha256Hex(adminPassword) : null;
+    const activeAuthHash = envAuthHash || r2AuthHash || null;
+    const hasPassword = Boolean(activeAuthHash);
     return jsonResponse({
       ok: true,
       r2Bound: hasR2,
       bucketBindingName,
       passwordConfigured: hasPassword,
       needsFirstSetup: hasR2 && !hasPassword,
+      authHash: activeAuthHash,
     });
   }
 
@@ -353,12 +360,12 @@ export async function onRequestGet(context) {
       .map((obj) => formatR2Object(obj, request, env))
       .sort((a, b) => new Date(b.uploaded).getTime() - new Date(a.uploaded).getTime());
 
-    const folderSet = new Set(["default"]);
+    const folderSet = new Set();
     storedCategories.forEach((c) => {
-      if (c && c.name) folderSet.add(c.name);
+      if (c && c.name && c.name !== "default") folderSet.add(c.name);
     });
     items.forEach((item) => {
-      if (item.folder) folderSet.add(item.folder);
+      if (item.folder && item.folder !== "default") folderSet.add(item.folder);
     });
 
     const responseData = {
@@ -474,12 +481,14 @@ export async function onRequestPost(context) {
       return jsonResponse({ ok: false, error: "未收到有效的文件数据" }, 400);
     }
 
-    const rawFolder = (formData.get("folder") || "default")
+    const rawFolderInput = (formData.get("folder") || "")
       .toString()
       .trim()
       .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, "-")
       .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "") || "default";
+      .replace(/^-|-$/g, "");
+    const cleanFolderMeta = (rawFolderInput === "default" || rawFolderInput === "all") ? "" : rawFolderInput;
+    const keyPrefix = cleanFolderMeta || "uploads";
 
     const originalName = (file.name || "image.jpg").toString();
     const extMatch = originalName.match(/\.([a-zA-Z0-9]+)$/);
@@ -505,11 +514,11 @@ export async function onRequestPost(context) {
       ? `${datePrefix}-${customSlug}-${randSuffix}`
       : `${datePrefix}-${randSuffix}`;
 
-    const key = `${rawFolder}/${baseName}.${ext}`;
+    const key = `${keyPrefix}/${baseName}.${ext}`;
     let thumbKey = "";
 
     if (thumbFile && typeof thumbFile !== "string") {
-      thumbKey = `.thumbs/${rawFolder}/${baseName}.webp`;
+      thumbKey = `.thumbs/${keyPrefix}/${baseName}.webp`;
       const thumbBuf = await thumbFile.arrayBuffer();
       await bucket.put(thumbKey, thumbBuf, {
         httpMetadata: {
@@ -526,7 +535,7 @@ export async function onRequestPost(context) {
     const lqip = (formData.get("lqip") || "").toString().slice(0, 750);
 
     const customMetadata = {
-      folder: rawFolder,
+      folder: cleanFolderMeta,
       originalName: originalName.slice(0, 180),
       title,
       width,
@@ -629,7 +638,10 @@ export async function onRequestPatch(context) {
         ...(existing.customMetadata || {}),
       };
       if (typeof title === "string") updatedMeta.title = title.slice(0, 120);
-      if (typeof folder === "string" && folder.trim()) updatedMeta.folder = folder.trim();
+      if (typeof folder === "string") {
+        const cleanF = folder.trim();
+        updatedMeta.folder = (cleanF === "default" || cleanF === "all") ? "" : cleanF;
+      }
 
       await bucket.put(k, existing.body, {
         httpMetadata: existing.httpMetadata,
