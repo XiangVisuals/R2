@@ -1,12 +1,12 @@
 /**
- * XIANG SPACE — v3.0 Zero-Jank & Timeline Edition
+ * 向 · 私人影像馆 (v4.0 东方极简画廊 · 光学星环门禁 · 全功能分类工作台)
  *
- * Key Upgrades:
- * 1. ZERO-JANK VIEWER: Removed automatic 10MB HD image decode on click & stripped backdrop-filter.
- *    Clicking a photo now reuses the already-decoded bitmap in <16ms, with an optional "LOAD ORIGINAL HD" button.
- * 2. CHRONOLOGICAL TIMELINE: Automatically groups photos by Date (TODAY / YESTERDAY / YYYY.MM.DD)
- *    with one-click per-day selection and true aspect-ratio masonry inside each date group.
- * 3. R2 10GB STORAGE QUOTA METER: Live top-bar quota gauge + multi-color category breakdown in Settings.
+ * 核心特性:
+ * 1. 网站启动序幕动画 (#site-loader) + 光学星环充能密码锁 (#lock-screen)
+ * 2. 全中文温润画廊视觉体系 + 双层悬浮毛玻璃导航架构
+ * 3. 全功能分类管理工作台 (#category-modal)：支持新建分类、10色专属色板、改名、换色、删除归并、
+ *    单张卡片气泡菜单一键换分类 (#quick-cat-popover)、以及拖拽照片/文件到顶部分类胶囊直接归档
+ * 4. 国内直连秒开引擎：零海外阻塞 CDN + 24px 0ms 瞬时模糊图 LQIP + 720px 极速 WebP 缩略图后台自动回填
  */
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -16,10 +16,11 @@ document.addEventListener("DOMContentLoaded", () => {
         UPLOAD_MODE: 'xiang_r2_upload_mode',
         LOCAL_ITEMS: 'xiang_r2_local_items',
         ZOOM_DESKTOP: 'xiang_r2_zoom_desktop',
-        ZOOM_MOBILE: 'xiang_r2_zoom_mobile'
+        ZOOM_MOBILE: 'xiang_r2_zoom_mobile',
+        CATEGORIES: 'xiang_r2_categories_v2'
     };
 
-    // Cloudflare R2 Free Tier = 10 GB (10 * 1024 * 1024 * 1024 bytes)
+    // Cloudflare R2 免费存储额度 = 10 GB
     const R2_FREE_QUOTA_BYTES = 10 * 1024 * 1024 * 1024;
 
     const isLocalhost = (
@@ -32,7 +33,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let customDomain = localStorage.getItem(STORAGE_KEYS.CUSTOM_DOMAIN) || '';
     let uploadMode = localStorage.getItem(STORAGE_KEYS.UPLOAD_MODE) || 'original';
 
-    // 仿 iPhone 相册缩略图档位：桌面端 1..5 (对应 7, 5, 4, 3, 2 列)，手机端 1..4 (对应 5, 3, 2, 1 列)
+    // 缩略图档位：桌面端 1..5 (对应 7, 5, 4, 3, 2 列)，手机端 1..4 (对应 5, 3, 2, 1 列)
     let desktopZoomLevel = Math.min(5, Math.max(1, parseInt(localStorage.getItem(STORAGE_KEYS.ZOOM_DESKTOP) || '3', 10)));
     let mobileZoomLevel = Math.min(4, Math.max(1, parseInt(localStorage.getItem(STORAGE_KEYS.ZOOM_MOBILE) || '3', 10)));
 
@@ -41,91 +42,189 @@ document.addEventListener("DOMContentLoaded", () => {
     let allImages = [];
     let filteredImages = [];
     let currentFolder = 'all';
-    let customFolders = new Set();
     let searchQuery = '';
     let isBatchMode = false;
     let selectedKeys = new Set();
     let activeViewerIdx = -1;
 
     /* =========================================================
-       0. 莫兰迪/画廊分类色彩系统 (Category Color System)
+       0-A. 网站启动序幕加载动画控制 (Site Boot Loader)
     ========================================================= */
+    const siteLoaderEl = document.getElementById('site-loader');
+    const siteLoaderBar = document.getElementById('site-loader-bar');
+    const siteLoaderText = document.getElementById('site-loader-text');
+    let siteLoaderDismissed = false;
+
+    function updateSiteLoader(pct, text) {
+        if (siteLoaderDismissed) return;
+        if (siteLoaderBar) siteLoaderBar.style.width = `${pct}%`;
+        if (text && siteLoaderText) siteLoaderText.textContent = text;
+    }
+
+    function dismissSiteLoader(delayMs = 260) {
+        if (siteLoaderDismissed) return;
+        siteLoaderDismissed = true;
+        if (siteLoaderBar) siteLoaderBar.style.width = '100%';
+        setTimeout(() => {
+            siteLoaderEl?.classList.add('fade-out');
+        }, delayMs);
+    }
+
+    updateSiteLoader(45, '正在校验云端节点与视觉索引...');
+
+    /* =========================================================
+       0-B. 画廊分类与莫兰迪色彩系统 (Category & Color System)
+    ========================================================= */
+    const DYNAMIC_PALETTE = [
+        '#2563eb', // 宝石蓝
+        '#059669', // 翡翠绿
+        '#d97706', // 琥珀金
+        '#7c3aed', // 鸢尾紫
+        '#e11d48', // 胭脂红
+        '#0891b2', // 青瓷蓝
+        '#4f46e5', // 靛青色
+        '#ea580c', // 丹霞橙
+        '#0d9488', // 松石绿
+        '#475569'  // 岩石灰
+    ];
+
     const PRESET_FOLDER_COLORS = {
-        all: '#0a0a0a',
+        all: '#111113',
         default: '#64748b',
         portfolio: '#2563eb',
         street: '#d97706',
         blog: '#059669',
-        '3d': '#7c3aed',
         portrait: '#e11d48',
         film: '#0891b2',
-        travel: '#ea580c',
-        work: '#4f46e5'
+        travel: '#ea580c'
     };
 
-    const DYNAMIC_PALETTE = [
-        '#2563eb', '#059669', '#d97706', '#7c3aed', '#e11d48',
-        '#0891b2', '#4f46e5', '#b45309', '#0d9488', '#9333ea'
-    ];
+    const PRESET_FOLDER_LABELS = {
+        all: '全部影像',
+        default: '默认归档'
+    };
+
+    // 存储用户自定义分类及其专属颜色: Map<folderName, { name, color }>
+    const categoryMetaMap = new Map();
+
+    function loadLocalCategories() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
+            if (!raw) return;
+            const list = JSON.parse(raw);
+            if (Array.isArray(list)) {
+                list.forEach(c => {
+                    if (c && c.name) {
+                        categoryMetaMap.set(c.name, { name: c.name, color: c.color || '' });
+                    }
+                });
+            }
+        } catch {}
+    }
+
+    function saveLocalCategories() {
+        try {
+            const arr = Array.from(categoryMetaMap.values());
+            localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(arr));
+        } catch {}
+    }
+
+    async function syncCategoriesToCloud() {
+        saveLocalCategories();
+        if (!isR2Connected) return;
+        try {
+            const headers = { 'Content-Type': 'application/json' };
+            if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+            await fetch('/api/images', {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify({
+                    action: 'saveCategories',
+                    categories: Array.from(categoryMetaMap.values())
+                })
+            });
+        } catch {}
+    }
+
+    loadLocalCategories();
+
+    function formatFolderDisplayName(folderName) {
+        if (!folderName) return '默认归档';
+        if (PRESET_FOLDER_LABELS[folderName]) return PRESET_FOLDER_LABELS[folderName];
+        return folderName;
+    }
 
     function getCategoryColor(folderName) {
-        const key = (folderName || 'default').toLowerCase().trim();
-        if (PRESET_FOLDER_COLORS[key]) return PRESET_FOLDER_COLORS[key];
+        const clean = (folderName || 'default').trim();
+        if (clean === 'all') return '#111113';
+        const custom = categoryMetaMap.get(clean);
+        if (custom && custom.color) return custom.color;
+        const lower = clean.toLowerCase();
+        if (PRESET_FOLDER_COLORS[lower]) return PRESET_FOLDER_COLORS[lower];
         let hash = 0;
-        for (let i = 0; i < key.length; i++) {
-            hash = key.charCodeAt(i) + ((hash << 5) - hash);
+        for (let i = 0; i < clean.length; i++) {
+            hash = clean.charCodeAt(i) + ((hash << 5) - hash);
         }
         return DYNAMIC_PALETTE[Math.abs(hash) % DYNAMIC_PALETTE.length];
     }
 
+    function getAllCategoryNames() {
+        const set = new Set(['default']);
+        categoryMetaMap.forEach((_, name) => set.add(name));
+        allImages.forEach(item => {
+            if (item.folder) set.add(item.folder);
+        });
+        return Array.from(set);
+    }
+
     const SEED_DEMO = [
         {
-            key: "portfolio/IMG_0635.jpg",
+            key: "精选集/IMG_0635.jpg",
             url: "https://cllli.oss-cn-beijing.aliyuncs.com/img/new/color/IMG_0635.jpg",
             size: 2845120,
             uploaded: "2026-10-23T10:30:00.000Z",
-            folder: "portfolio",
+            folder: "精选集",
             originalName: "IMG_0635.jpg",
-            title: "IMG_0635.jpg",
+            title: "山谷晨雾",
             width: 3840,
             height: 2560,
             isDemo: true,
             exif: { camera: "Canon EOS R5", lens: "RF 70-200mm F2.8", focal: "135mm", aperture: "f/4", shutter: "1/500s", iso: "160" }
         },
         {
-            key: "portfolio/IMG_0801.jpg",
+            key: "精选集/IMG_0801.jpg",
             url: "https://cllli.oss-cn-beijing.aliyuncs.com/img/new/line/IMG_0801.jpg",
             size: 1984000,
             uploaded: "2026-10-23T09:15:00.000Z",
-            folder: "portfolio",
+            folder: "精选集",
             originalName: "IMG_0801.jpg",
-            title: "IMG_0801.jpg",
+            title: "建筑光影",
             width: 3000,
             height: 4000,
             isDemo: true,
             exif: { camera: "Hasselblad X2D", lens: "XCD 55V", focal: "55mm", aperture: "f/5.6", shutter: "1/640s", iso: "64" }
         },
         {
-            key: "street/IMG_2655.jpg",
+            key: "街头纪实/IMG_2655.jpg",
             url: "https://cllli.oss-cn-beijing.aliyuncs.com/img/new/city/IMG_2655.jpg",
             size: 3120400,
             uploaded: "2026-10-21T14:20:00.000Z",
-            folder: "street",
+            folder: "街头纪实",
             originalName: "IMG_2655.jpg",
-            title: "IMG_2655.jpg",
+            title: "城市黄昏",
             width: 3600,
             height: 2400,
             isDemo: true,
             exif: { camera: "Canon EOS R5", lens: "RF 24-70mm F2.8", focal: "50mm", aperture: "f/8", shutter: "1/250s", iso: "100" }
         },
         {
-            key: "blog/IMG_2973.jpg",
+            key: "黑白胶片/IMG_2973.jpg",
             url: "https://cllli.oss-cn-beijing.aliyuncs.com/img/new/black/IMG_2973.jpg",
             size: 2450100,
             uploaded: "2026-10-18T18:00:00.000Z",
-            folder: "blog",
+            folder: "黑白胶片",
             originalName: "IMG_2973.jpg",
-            title: "IMG_2973.jpg",
+            title: "静谧海岸",
             width: 3840,
             height: 2560,
             isDemo: true,
@@ -145,28 +244,28 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function formatDateHeading(isoStr) {
-        if (!isoStr) return { key: 'ARCHIVE', title: 'ARCHIVE', sub: 'EARLIER' };
+        if (!isoStr) return { key: '更早归档', title: '更早归档', sub: '历史影像' };
         const d = new Date(isoStr);
-        if (isNaN(d.getTime())) return { key: 'ARCHIVE', title: 'ARCHIVE', sub: 'EARLIER' };
+        if (isNaN(d.getTime())) return { key: '更早归档', title: '更早归档', sub: '历史影像' };
 
         const yyyy = d.getFullYear();
         const mm = String(d.getMonth() + 1).padStart(2, '0');
         const dd = String(d.getDate()).padStart(2, '0');
-        const dateKey = `${yyyy}.${mm}.${dd}`;
+        const dateKey = `${yyyy}年${mm}月${dd}日`;
 
         const now = new Date();
-        const todayKey = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}`;
+        const todayKey = `${now.getFullYear()}年${String(now.getMonth() + 1).padStart(2, '0')}月${String(now.getDate()).padStart(2, '0')}日`;
 
         const yest = new Date(now);
         yest.setDate(now.getDate() - 1);
-        const yestKey = `${yest.getFullYear()}.${String(yest.getMonth() + 1).padStart(2, '0')}.${String(yest.getDate()).padStart(2, '0')}`;
+        const yestKey = `${yest.getFullYear()}年${String(yest.getMonth() + 1).padStart(2, '0')}月${String(yest.getDate()).padStart(2, '0')}日`;
 
-        const weekdays = ['SUN 周日', 'MON 周一', 'TUE 周二', 'WED 周三', 'THU 周四', 'FRI 周五', 'SAT 周六'];
+        const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
         const wk = weekdays[d.getDay()];
 
-        if (dateKey === todayKey) return { key: dateKey, title: `${dateKey}`, sub: `TODAY 今天 · ${wk}` };
-        if (dateKey === yestKey) return { key: dateKey, title: `${dateKey}`, sub: `YESTERDAY 昨天 · ${wk}` };
-        return { key: dateKey, title: `${dateKey}`, sub: wk };
+        if (dateKey === todayKey) return { key: dateKey, title: dateKey, sub: `今天 · ${wk}` };
+        if (dateKey === yestKey) return { key: dateKey, title: dateKey, sub: `昨天 · ${wk}` };
+        return { key: dateKey, title: dateKey, sub: wk };
     }
 
     function toast(msg) {
@@ -180,10 +279,10 @@ document.addEventListener("DOMContentLoaded", () => {
             el.style.opacity = '0';
             el.style.transition = 'opacity 0.2s ease';
             setTimeout(() => el.remove(), 220);
-        }, 2000);
+        }, 2100);
     }
 
-    async function copyText(text, label = 'URL') {
+    async function copyText(text, label = '直链') {
         if (!text) return;
         try {
             await navigator.clipboard.writeText(text);
@@ -195,7 +294,7 @@ document.addEventListener("DOMContentLoaded", () => {
             document.execCommand('copy');
             ta.remove();
         }
-        toast(`COPIED ${label}`);
+        toast(`已复制${label}`);
     }
 
     function getFullUrl(item) {
@@ -279,8 +378,8 @@ document.addEventListener("DOMContentLoaded", () => {
             quotaMiniFill.style.background = pct > 85 ? 'var(--danger)' : 'var(--ok)';
         }
 
-        if (meterPct) meterPct.textContent = `${pct < 0.1 && totalUsedBytes > 0 ? '< 0.1' : pct.toFixed(1)}% USED`;
-        if (meterUsedVal) meterUsedVal.textContent = `${usedFormatted} (${allImages.length} 张)`;
+        if (meterPct) meterPct.textContent = `已用 ${pct < 0.1 && totalUsedBytes > 0 ? '< 0.1' : pct.toFixed(1)}%`;
+        if (meterUsedVal) meterUsedVal.textContent = `${usedFormatted}（共 ${allImages.length} 幅）`;
         if (meterFreeVal) meterFreeVal.textContent = freeGB;
 
         const catBytesMap = new Map();
@@ -302,20 +401,21 @@ document.addEventListener("DOMContentLoaded", () => {
                 .sort((a, b) => b[1] - a[1])
                 .forEach(([folder, bytes]) => {
                     const color = getCategoryColor(folder);
+                    const label = formatFolderDisplayName(folder);
                     const sharePct = Math.max(2, (bytes / totalUsedBytes) * 100);
 
                     const seg = document.createElement('div');
                     seg.className = 'meter-seg';
                     seg.style.width = `${sharePct}%`;
                     seg.style.background = color;
-                    seg.title = `${folder.toUpperCase()}: ${formatBytes(bytes)}`;
+                    seg.title = `${label}: ${formatBytes(bytes)}`;
                     meterBarMulti.appendChild(seg);
 
                     const itemEl = document.createElement('div');
                     itemEl.className = 'breakdown-item';
                     itemEl.innerHTML = `
                         <span class="breakdown-dot" style="background:${color}"></span>
-                        <span>${folder.toUpperCase()}: ${formatBytes(bytes)}</span>
+                        <span>${label}：${formatBytes(bytes)}</span>
                     `;
                     meterCatBreakdown.appendChild(itemEl);
                 });
@@ -326,14 +426,19 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById('mob-btn-quota')?.addEventListener('click', () => openSettings());
 
     /* =========================================================
-       3. 首屏严格密码门禁 (Strict Password Lock Screen)
-          绝不在云端环境随意放行或回退演示模式
+       3. 首屏光学星环密码门禁 (Optical Ring Lock Vault)
+          支持打字星环充能旋转、波纹扩散、密码显隐与丝滑揭幕
     ========================================================= */
     const lockScreen = document.getElementById('lock-screen');
     const lockForm = document.getElementById('lock-form');
     const lockInput = document.getElementById('lock-password-input');
     const lockInputGroup = document.getElementById('lock-input-group');
+    const lockToggleVisBtn = document.getElementById('lock-toggle-vis');
     const lockSubmitBtn = document.getElementById('lock-submit-btn');
+    const lockEmblemStage = document.getElementById('lock-emblem-stage');
+    const lockRippleRing = document.getElementById('lock-ripple-ring');
+    const lockRingOrbit = document.getElementById('lock-ring-orbit');
+    const lockRingProgress = document.getElementById('lock-ring-progress');
     const lockMark = document.getElementById('lock-mark');
     const lockKeyDots = document.getElementById('lock-key-dots');
     const lockError = document.getElementById('lock-error');
@@ -343,11 +448,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let typingBumpTimer = null;
 
+    // 显隐密码切换
+    lockToggleVisBtn?.addEventListener('click', () => {
+        if (!lockInput) return;
+        const isPwd = lockInput.type === 'password';
+        lockInput.type = isPwd ? 'text' : 'password';
+        lockToggleVisBtn.classList.toggle('active', isPwd);
+        lockInput.focus();
+    });
+
+    function triggerKeystrokeRipple() {
+        if (!lockRippleRing) return;
+        lockRippleRing.classList.remove('ripple-active');
+        void lockRippleRing.offsetWidth;
+        lockRippleRing.classList.add('ripple-active');
+    }
+
     function syncLockTypingVisualizer() {
         const val = lockInput?.value || '';
         const len = val.length;
         lockMark?.classList.toggle('has-input', len > 0);
         lockInputGroup?.classList.toggle('has-val', len > 0);
+
+        // 光学星环充能进度与内环旋转角度
+        const circumference = 226.2;
+        const fillRatio = Math.min(len, 10) / 10;
+        if (lockRingProgress) {
+            lockRingProgress.style.strokeDashoffset = String(circumference * (1 - fillRatio));
+        }
+        if (lockRingOrbit) {
+            lockRingOrbit.style.transform = `rotate(${len * 28}deg)`;
+        }
 
         if (lockKeyDots) {
             const maxDots = Math.min(len, 16);
@@ -371,30 +502,36 @@ document.addEventListener("DOMContentLoaded", () => {
             lockError.textContent = '';
             lockError.classList.remove('ok-msg');
         }
+        lockEmblemStage?.classList.remove('unlocked-state');
         syncLockTypingVisualizer();
-        if (lockMark) {
-            lockMark.classList.add('typing-bump');
-            clearTimeout(typingBumpTimer);
-            typingBumpTimer = setTimeout(() => {
-                lockMark.classList.remove('typing-bump');
-            }, 150);
-        }
+        triggerKeystrokeRipple();
+
+        lockMark?.classList.add('typing-bump');
+        lockInputGroup?.classList.add('typing-pulse');
+        clearTimeout(typingBumpTimer);
+        typingBumpTimer = setTimeout(() => {
+            lockMark?.classList.remove('typing-bump');
+            lockInputGroup?.classList.remove('typing-pulse');
+        }, 160);
     });
 
     function unlockUI() {
         isUnlocked = true;
         lockSubmitBtn?.classList.remove('verifying');
+        lockEmblemStage?.classList.add('unlocked-state');
         document.body.classList.remove('locked');
         lockScreen?.classList.add('unlocked');
         if (lockError) {
             lockError.textContent = '';
             lockError.classList.remove('ok-msg');
         }
+        dismissSiteLoader(120);
     }
 
     function showLockUI(hintMessage = '') {
         isUnlocked = false;
         lockSubmitBtn?.classList.remove('verifying');
+        lockEmblemStage?.classList.remove('unlocked-state');
         document.body.classList.remove('batch-active');
         document.body.classList.add('locked');
         lockScreen?.classList.remove('unlocked');
@@ -403,11 +540,13 @@ document.addEventListener("DOMContentLoaded", () => {
             lockError.classList.remove('ok-msg');
             lockError.textContent = hintMessage;
         }
-        setTimeout(() => lockInput?.focus(), 80);
+        dismissSiteLoader(180);
+        setTimeout(() => lockInput?.focus(), 120);
     }
 
     function triggerLockShake(msg) {
         lockSubmitBtn?.classList.remove('verifying');
+        lockEmblemStage?.classList.remove('unlocked-state');
         if (lockError) {
             lockError.classList.remove('ok-msg');
             lockError.textContent = msg;
@@ -427,26 +566,26 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!ct.includes('application/json')) {
                 if (lockFooterHint) {
                     lockFooterHint.textContent = isLocalhost
-                        ? 'LOCAL DEV · 本地开发预览模式'
-                        : 'CLOUDFLARE EDGE · 请输入访问密码';
+                        ? '本地开发预览模式 · 输入任意密码即可体验'
+                        : '云端边缘节点已就绪 · 请输入访问密码';
                 }
                 return;
             }
             const info = await res.json();
             if (lockFooterHint) {
                 if (info.r2Bound && info.passwordConfigured) {
-                    lockFooterHint.textContent = 'CLOUDFLARE R2 NODE READY · 节点与密码保护已生效';
+                    lockFooterHint.textContent = 'Cloudflare R2 云端存储与加密保护已就绪';
                 } else if (info.r2Bound && info.needsFirstSetup) {
-                    lockFooterHint.textContent = 'R2 存储桶已连接 · 首次输入您的密码将自动加密锁定此空间';
+                    lockFooterHint.textContent = 'R2 存储桶已连接 · 首次输入密码将自动加密锁定此空间';
                 } else if (!info.r2Bound) {
-                    lockFooterHint.textContent = '请在 Cloudflare Bindings 绑定 R2 存储桶 BUCKET';
+                    lockFooterHint.textContent = '请在 Cloudflare 后台绑定 R2 存储桶 (BUCKET)';
                 }
             }
         } catch {
             if (lockFooterHint) {
                 lockFooterHint.textContent = isLocalhost
-                    ? 'LOCAL DEV · 本地预览模式'
-                    : 'PROTECTED BY CLOUDFLARE R2 EDGE';
+                    ? '本地预览模式 · 输入任意密码进入'
+                    : '云端安全门禁保护中';
             }
         }
     }
@@ -462,24 +601,26 @@ document.addEventListener("DOMContentLoaded", () => {
             const res = await fetch('/api/images', { headers, cache: 'no-store' });
             const ct = res.headers.get('content-type') || '';
 
-            // 仅当在本地 localhost 静态打开且无 Worker 路由时允许本地演示
             if (!ct.includes('application/json')) {
                 if (!isLocalhost) {
                     if (skeletonStageEl) skeletonStageEl.hidden = true;
-                    triggerLockShake('API 路由未就绪，请等待 Cloudflare 部署完成并刷新页面');
+                    dismissSiteLoader(100);
+                    triggerLockShake('云端接口尚未就绪，请稍后刷新重试');
                     return false;
                 }
                 isR2Connected = false;
                 if (!passwordAttempt) {
                     lockSubmitBtn?.classList.remove('verifying');
                     if (skeletonStageEl) skeletonStageEl.hidden = true;
+                    showLockUI();
                     return false;
                 }
                 adminToken = passwordAttempt;
                 localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
                 allImages = loadLocalItems();
-                if (r2ConnStatus) r2ConnStatus.textContent = 'LOCAL PREVIEW · 本地开发演示模式';
+                if (r2ConnStatus) r2ConnStatus.textContent = '本地开发预览模式（未连接云端 R2）';
                 if (skeletonStageEl) skeletonStageEl.hidden = true;
+                lockEmblemStage?.classList.add('unlocked-state');
                 unlockUI();
                 renderSpace();
                 return true;
@@ -487,77 +628,92 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const data = await res.json();
 
-            // 1. 密码错误：严格拦截，绝不进入演示模式！
+            // 1. 密码错误：严格拦截
             if (res.status === 401 || res.status === 403 || data.locked || !data.isAdmin) {
                 localStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
                 adminToken = '';
                 if (skeletonStageEl) skeletonStageEl.hidden = true;
+                dismissSiteLoader(100);
                 if (!isInitialAutoCheck) {
-                    triggerLockShake(data.message || '密码错误，请重新输入 (INVALID PASSWORD)');
+                    triggerLockShake(data.message || '访问密码不正确，请重新输入');
                 } else {
                     showLockUI();
                 }
                 return false;
             }
 
-            // 2. 密码验证通过！保存正确密码并展示解锁反馈
+            // 2. 密码验证通过！点亮星环并保存密码
             adminToken = passwordAttempt;
             localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
             isR2Connected = Boolean(data.r2Bound);
+            lockEmblemStage?.classList.add('unlocked-state');
 
             if (lockError && !isInitialAutoCheck) {
                 lockError.classList.add('ok-msg');
-                lockError.textContent = 'ACCESS GRANTED · 正在开启私人视觉空间';
+                lockError.textContent = '验证通过 · 正在开启私人影像馆...';
             }
 
             if (data.firstTimeInitialized) {
-                toast('已将您的密码 SHA-256 加密锁定至 R2 存储桶！');
+                toast('已将您的密码加密锁定至云端存储桶');
             }
 
-            // 3. 如果密码正确但 R2 存储桶未绑定
+            // 同步云端保存的自定义分类及配色
+            if (Array.isArray(data.categories)) {
+                data.categories.forEach(c => {
+                    if (c && c.name) {
+                        categoryMetaMap.set(c.name, { name: c.name, color: c.color || '' });
+                    }
+                });
+                saveLocalCategories();
+            }
+
+            // 3. 密码正确但 R2 存储桶未绑定
             if (!isR2Connected) {
-                allImages = []; // 绝不混入假演示图片！
+                allImages = [];
                 if (r2ConnStatus) {
-                    r2ConnStatus.textContent = '⚠️ R2 存储桶未绑定：请在 Cloudflare -> Settings -> Bindings 绑定 R2 桶 (变量名填 BUCKET)';
+                    r2ConnStatus.textContent = '尚未检测到 R2 存储桶绑定：请在 Cloudflare -> Settings -> Bindings 绑定 BUCKET';
                 }
                 const emptyTitle = document.querySelector('.empty-title');
                 const emptySub = document.querySelector('.empty-sub');
                 if (emptyTitle) emptyTitle.textContent = '密码验证通过，但尚未检测到 R2 存储桶绑定';
-                if (emptySub) emptySub.textContent = '请前往 Cloudflare Workers -> Settings -> Bindings 添加 R2 bucket 绑定 (名称: BUCKET)';
+                if (emptySub) emptySub.textContent = '请前往 Cloudflare Workers -> Settings -> Bindings 添加 R2 存储桶绑定（变量名填 BUCKET）';
                 if (skeletonStageEl) skeletonStageEl.hidden = true;
                 unlockUI();
                 renderSpace();
-                toast('请绑定 R2 存储桶 BUCKET');
                 return true;
             }
 
             // 4. 密码正确且 R2 已连接：加载真实云端图片
             allImages = Array.isArray(data.items) ? data.items : [];
             if (r2ConnStatus) {
-                r2ConnStatus.textContent = `R2 CONNECTED · 已连接云端存储桶 (images · 共 ${allImages.length} 张影像)`;
+                r2ConnStatus.textContent = `已连接 Cloudflare R2 云端存储桶（共归档 ${allImages.length} 幅影像）`;
             }
             const emptyTitle = document.querySelector('.empty-title');
             const emptySub = document.querySelector('.empty-sub');
-            if (emptyTitle) emptyTitle.textContent = '当前 R2 存储桶暂无图片 · 点击或拖拽上传第一张作品';
-            if (emptySub) emptySub.textContent = '支持 JPG · PNG · WebP · GIF · SVG 真实比例时间线归档';
+            if (emptyTitle) emptyTitle.textContent = '当前分类暂无影像 · 点击或拖拽照片上传';
+            if (emptySub) emptySub.textContent = '支持 JPG · PNG · WebP · GIF · SVG 真实比例无损时间线归档';
 
             if (skeletonStageEl) skeletonStageEl.hidden = true;
+            if (!isInitialAutoCheck) {
+                await new Promise(r => setTimeout(r, 240));
+            }
             unlockUI();
             renderSpace();
             return true;
         } catch {
             if (skeletonStageEl) skeletonStageEl.hidden = true;
+            dismissSiteLoader(100);
             if (!isLocalhost) {
                 if (!isInitialAutoCheck) {
-                    triggerLockShake('网络连接失败，请稍后重试');
+                    triggerLockShake('网络连接超时，请重试');
                 } else {
-                    lockSubmitBtn?.classList.remove('verifying');
+                    showLockUI();
                 }
                 return false;
             }
             isR2Connected = false;
             if (!passwordAttempt) {
-                lockSubmitBtn?.classList.remove('verifying');
+                showLockUI();
                 return false;
             }
             adminToken = passwordAttempt;
@@ -573,21 +729,18 @@ document.addEventListener("DOMContentLoaded", () => {
         e.preventDefault();
         const val = (lockInput?.value || '').trim();
         if (!val) {
-            triggerLockShake('请输入访问密码 (PLEASE ENTER PASSWORD)');
+            triggerLockShake('请输入访问密码');
             return;
         }
         if (lockError) {
             lockError.classList.add('ok-msg');
-            lockError.textContent = 'VERIFYING ACCESS · 正在加密校验...';
+            lockError.textContent = '正在加密校验访问密钥...';
         }
         await tryUnlockAndLoad(val, false);
     });
 
     /* =========================================================
-       4. 仿 iPhone 相册缩略图尺寸调节器 (Thumbnail Zoom Scaler)
-          - 桌面端 1..5 档 -> [7, 5, 4, 3, 2] 列
-          - 手机端 1..4 档 -> [5, 3, 2, 1] 列 (支持底部 -/+ 按钮与双指捏合缩放)
-          - 密集小图档位自动开启 .zoom-dense 隐藏底部标题，宛如 iOS 相册日/月视图
+       4. 缩略图尺寸无级调节器 (Thumbnail Zoom Scaler)
     ========================================================= */
     const DESKTOP_COLS_MAP = { 1: 7, 2: 5, 3: 4, 4: 3, 5: 2 };
     const MOBILE_COLS_MAP = { 1: 5, 2: 3, 3: 2, 4: 1 };
@@ -621,7 +774,6 @@ document.addEventListener("DOMContentLoaded", () => {
             mobZoomLabel.textContent = `${cols}列`;
         }
 
-        // 当列数较多（手机 >= 3 列，桌面 >= 5 列）时开启仿 iPhone 相册紧凑无字模式
         const isDense = mobile ? cols >= 3 : cols >= 5;
         document.body.classList.toggle('zoom-dense', isDense);
     }
@@ -654,7 +806,7 @@ document.addEventListener("DOMContentLoaded", () => {
         applyZoomChange(mobileZoomLevel + 1, true);
     });
 
-    // 移动端画布支持仿 iPhone 相册双指捏合缩放 (Pinch-to-Zoom Grid)
+    // 移动端双指捏合缩放网格
     let pinchStartDist = 0;
     let pinchTriggered = false;
     const spaceMainEl = document.getElementById('space-main');
@@ -677,10 +829,8 @@ document.addEventListener("DOMContentLoaded", () => {
             if (Math.abs(delta) > 42) {
                 pinchTriggered = true;
                 if (delta > 0) {
-                    // 双指张开 -> 放大缩略图
                     applyZoomChange(mobileZoomLevel + 1, true);
                 } else {
-                    // 双指捏合 -> 缩小缩略图（更多列）
                     applyZoomChange(mobileZoomLevel - 1, true);
                 }
             }
@@ -688,7 +838,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }, { passive: true });
 
     /* =========================================================
-       5. 彩色分类标签、搜索与时间线真实比例瀑布流 (Timeline + Masonry)
+       5. 全功能分类工作台 + 拖拽归档 + 瀑布流画廊 (Categories & Timeline)
     ========================================================= */
     const folderTabsEl = document.getElementById('folder-tabs');
     const batchMoveSelect = document.getElementById('batch-move-select');
@@ -697,11 +847,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const storageStat = document.getElementById('storage-stat');
     const dropTargetHint = document.getElementById('drop-target-hint');
     const editorialTitleEl = document.getElementById('editorial-title');
+    const editorialCatDotEl = document.getElementById('editorial-cat-dot');
     const editorialStatSummaryEl = document.getElementById('editorial-stat-summary');
     const editorialGridBadgeEl = document.getElementById('editorial-grid-badge');
+    const uploadToCurrentLabelEl = document.getElementById('upload-to-current-label');
 
     // 针对存量未生成缩略图的历史大图：一旦浏览器解码成功，后台静默生成 720px WebP 缩略图与 24px LQIP 写回 R2
-    // 让国内后续打开直接享受 <30KB 极速秒开体验
     const backfilledKeys = new Set();
     let isBackfilling = false;
     const backfillQueue = [];
@@ -712,7 +863,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 const nw = imgSource.naturalWidth || 1200;
                 const nh = imgSource.naturalHeight || 900;
 
-                // 1. 生成 24px 超轻量模糊占位图 LQIP (~300 bytes)
                 let lw = 24;
                 let lh = Math.max(12, Math.round((nh * 24) / nw));
                 if (nh > nw) {
@@ -733,7 +883,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     lqip = '';
                 }
 
-                // 2. 生成 720px 高清极速 WebP 缩略图 (~25KB，专为国内跨洋链路秒开优化)
                 const thumbMax = 720;
                 let tw = nw;
                 let th = nh;
@@ -788,9 +937,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         if (data.lqip) item.lqip = data.lqip;
                     }
                 }
-            } catch {
-                // 静默忽略后台优化错误，不影响前台浏览
-            }
+            } catch {}
             await new Promise(r => setTimeout(r, 700));
         }
         isBackfilling = false;
@@ -806,29 +953,109 @@ document.addEventListener("DOMContentLoaded", () => {
         setTimeout(processBackfillQueue, 1200);
     }
 
+    // 统一将指定图片移动到目标分类（支持单张或批量）
+    async function moveImagesToCategory(keys, targetFolder) {
+        const cleanFolder = (targetFolder || 'default').trim();
+        if (!keys || keys.length === 0) return false;
+
+        if (!categoryMetaMap.has(cleanFolder) && cleanFolder !== 'default') {
+            categoryMetaMap.set(cleanFolder, { name: cleanFolder, color: getCategoryColor(cleanFolder) });
+            saveLocalCategories();
+        }
+
+        if (isR2Connected) {
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+                const res = await fetch('/api/images', {
+                    method: 'PATCH',
+                    headers,
+                    body: JSON.stringify({
+                        keys,
+                        folder: cleanFolder,
+                        categories: Array.from(categoryMetaMap.values())
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) {
+                    toast(data.error || '移动分类失败');
+                    return false;
+                }
+            } catch {
+                toast('网络错误，移动分类失败');
+                return false;
+            }
+        }
+
+        const keySet = new Set(keys);
+        allImages.forEach(img => {
+            if (keySet.has(img.key)) img.folder = cleanFolder;
+        });
+        if (!isR2Connected) saveLocalItems();
+        renderSpace();
+        toast(`已将 ${keys.length} 幅影像归入「${formatFolderDisplayName(cleanFolder)}」`);
+        return true;
+    }
+
+    // 为分类胶囊绑定拖拽接收事件（支持把卡片或电脑文件直接拖到顶部分类胶囊上！）
+    function bindTabDropTarget(tabBtn, targetFolder) {
+        if (targetFolder === 'all') return;
+        tabBtn.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            tabBtn.classList.add('drag-over');
+        });
+        tabBtn.addEventListener('dragleave', () => {
+            tabBtn.classList.remove('drag-over');
+        });
+        tabBtn.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            tabBtn.classList.remove('drag-over');
+            dropOverlay?.classList.remove('active');
+            dragDepth = 0;
+
+            // 1. 如果是拖拽外部文件到该分类标签上，直接上传至该分类
+            const files = Array.from(e.dataTransfer?.files || []).filter(f => f.type.startsWith('image/'));
+            if (files.length > 0) {
+                await uploadFiles(files, targetFolder);
+                return;
+            }
+
+            // 2. 如果是拖拽画廊内的图片卡片到该分类标签上，直接移动分类
+            const draggedKey = e.dataTransfer?.getData('text/xiang-photo-key');
+            if (draggedKey) {
+                const keysToMove = selectedKeys.has(draggedKey) && selectedKeys.size > 0
+                    ? Array.from(selectedKeys)
+                    : [draggedKey];
+                await moveImagesToCategory(keysToMove, targetFolder);
+            }
+        });
+    }
+
     function renderFolders() {
         if (!folderTabsEl) return;
 
         const folderCounts = new Map();
+        folderCounts.set('default', 0);
+        categoryMetaMap.forEach((_, name) => {
+            if (!folderCounts.has(name)) folderCounts.set(name, 0);
+        });
         allImages.forEach(item => {
             const f = item.folder || 'default';
             folderCounts.set(f, (folderCounts.get(f) || 0) + 1);
         });
-        customFolders.forEach(f => {
-            if (!folderCounts.has(f)) folderCounts.set(f, 0);
-        });
-        if (!folderCounts.has('default') && allImages.length === 0) {
-            folderCounts.set('default', 0);
-        }
 
         folderTabsEl.innerHTML = '';
 
+        // 1. 全部影像标签
         const allBtn = document.createElement('button');
+        allBtn.type = 'button';
         allBtn.className = `tab-item ${currentFolder === 'all' ? 'active' : ''}`;
-        allBtn.style.setProperty('--cat-color', '#0a0a0a');
+        allBtn.style.setProperty('--cat-color', '#111113');
         allBtn.innerHTML = `
             <span class="tab-dot"></span>
-            <span>ALL</span>
+            <span>全部影像</span>
             <span class="tab-count">${allImages.length}</span>
         `;
         allBtn.addEventListener('click', () => {
@@ -837,68 +1064,357 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         folderTabsEl.appendChild(allBtn);
 
+        // 2. 各个具体分类标签
         const folderList = Array.from(folderCounts.keys());
         folderList.forEach(folder => {
-            const color = getCategoryColor(folder);
             const count = folderCounts.get(folder) || 0;
+            // 如果默认分类为空且已有其他图片/分类，仍保留默认归档方便拖拽
+            const color = getCategoryColor(folder);
+            const label = formatFolderDisplayName(folder);
             const btn = document.createElement('button');
+            btn.type = 'button';
             btn.className = `tab-item ${currentFolder === folder ? 'active' : ''}`;
             btn.style.setProperty('--cat-color', color);
+            btn.title = `点击查看「${label}」（也可将照片直接拖拽到此标签归档）`;
             btn.innerHTML = `
                 <span class="tab-dot"></span>
-                <span>${folder.toUpperCase()}</span>
+                <span>${label}</span>
                 <span class="tab-count">${count}</span>
             `;
             btn.addEventListener('click', () => {
                 currentFolder = folder;
                 renderSpace();
             });
+            bindTabDropTarget(btn, folder);
             folderTabsEl.appendChild(btn);
         });
 
+        // 同步底部批量移动下拉框
         if (batchMoveSelect) {
-            batchMoveSelect.innerHTML = `<option value="">MOVE TO 移动分类至...</option>`;
+            batchMoveSelect.innerHTML = `<option value="">批量移动至分类...</option>`;
             folderList.forEach(f => {
                 const opt = document.createElement('option');
                 opt.value = f;
-                opt.textContent = `→ ${f.toUpperCase()}`;
+                opt.textContent = `→ ${formatFolderDisplayName(f)}`;
                 batchMoveSelect.appendChild(opt);
             });
             const newOpt = document.createElement('option');
             newOpt.value = '__new__';
-            newOpt.textContent = '+ 新建分类并移动...';
+            newOpt.textContent = '+ 新建分类并移入...';
             batchMoveSelect.appendChild(newOpt);
         }
 
+        const targetUploadFolder = currentFolder === 'all' ? 'default' : currentFolder;
+        const targetLabel = formatFolderDisplayName(targetUploadFolder);
         if (dropTargetHint) {
-            const target = currentFolder === 'all' ? 'default' : currentFolder;
-            dropTargetHint.textContent = `松开鼠标上传至 [${target.toUpperCase()}]`;
+            dropTargetHint.textContent = `松开鼠标将上传至「${targetLabel}」`;
+        }
+        if (uploadToCurrentLabelEl) {
+            uploadToCurrentLabelEl.textContent = `+ 上传至「${targetLabel}」`;
         }
     }
 
-    document.getElementById('btn-new-folder')?.addEventListener('click', () => {
-        const name = prompt('新建分类名称 (例如: 2026, street, blog, portrait):');
-        if (!name) return;
-        const clean = name.trim().replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '-');
-        if (!clean) return;
-        customFolders.add(clean);
+    /* =========================================================
+       5-B. 分类管理工作台弹窗 (#category-modal) & 单卡快捷菜单 (#quick-cat-popover)
+    ========================================================= */
+    const categoryModal = document.getElementById('category-modal');
+    const formCreateCategory = document.getElementById('form-create-category');
+    const inputNewCatName = document.getElementById('input-new-cat-name');
+    const newCatColorPreview = document.getElementById('new-cat-color-preview');
+    const newCatPaletteEl = document.getElementById('new-cat-palette');
+    const catManageListEl = document.getElementById('cat-manage-list');
+    const catModalCountEl = document.getElementById('cat-modal-count');
+
+    let selectedNewCatColor = DYNAMIC_PALETTE[0];
+    let pendingMoveKeysAfterCreate = null;
+
+    function renderNewCategoryPalette() {
+        if (!newCatPaletteEl) return;
+        newCatPaletteEl.innerHTML = '';
+        if (newCatColorPreview) {
+            newCatColorPreview.style.background = selectedNewCatColor;
+        }
+        DYNAMIC_PALETTE.forEach(color => {
+            const swatch = document.createElement('button');
+            swatch.type = 'button';
+            swatch.className = `cat-swatch ${color === selectedNewCatColor ? 'active' : ''}`;
+            swatch.style.background = color;
+            swatch.title = `选择颜色 ${color}`;
+            swatch.addEventListener('click', () => {
+                selectedNewCatColor = color;
+                renderNewCategoryPalette();
+            });
+            newCatPaletteEl.appendChild(swatch);
+        });
+    }
+
+    function renderCategoryStudioList() {
+        if (!catManageListEl) return;
+        const folderCounts = new Map();
+        folderCounts.set('default', 0);
+        categoryMetaMap.forEach((_, name) => {
+            if (!folderCounts.has(name)) folderCounts.set(name, 0);
+        });
+        allImages.forEach(item => {
+            const f = item.folder || 'default';
+            folderCounts.set(f, (folderCounts.get(f) || 0) + 1);
+        });
+
+        const folders = Array.from(folderCounts.keys());
+        if (catModalCountEl) {
+            catModalCountEl.textContent = `共 ${folders.length} 个分类`;
+        }
+
+        catManageListEl.innerHTML = '';
+
+        folders.forEach(folder => {
+            const count = folderCounts.get(folder) || 0;
+            const color = getCategoryColor(folder);
+            const label = formatFolderDisplayName(folder);
+            const isDefault = folder === 'default';
+
+            const row = document.createElement('div');
+            row.className = 'cat-manage-row';
+            row.innerHTML = `
+                <div class="cat-row-left">
+                    <button type="button" class="cat-row-color-btn" style="background:${color}" title="点击切换此分类标识色"></button>
+                    <span class="cat-row-name">${label}</span>
+                    <span class="cat-row-count">${count} 幅</span>
+                </div>
+                <div class="cat-row-actions">
+                    <button type="button" class="cat-mini-btn btn-cat-view">查看</button>
+                    ${isDefault ? '' : '<button type="button" class="cat-mini-btn btn-cat-rename">改名</button>'}
+                    ${isDefault ? '' : '<button type="button" class="cat-mini-btn danger btn-cat-delete">删除</button>'}
+                </div>
+            `;
+
+            // 点击色点循环切换 10 种高级配色
+            row.querySelector('.cat-row-color-btn')?.addEventListener('click', async () => {
+                const idx = DYNAMIC_PALETTE.indexOf(color);
+                const nextColor = DYNAMIC_PALETTE[(idx + 1) % DYNAMIC_PALETTE.length];
+                categoryMetaMap.set(folder, { name: folder, color: nextColor });
+                await syncCategoriesToCloud();
+                renderCategoryStudioList();
+                renderSpace();
+                toast(`已更新「${label}」的分类标识色`);
+            });
+
+            // 点击查看该分类
+            row.querySelector('.btn-cat-view')?.addEventListener('click', () => {
+                currentFolder = folder;
+                closeCategoryModal();
+                renderSpace();
+            });
+
+            // 点击改名
+            row.querySelector('.btn-cat-rename')?.addEventListener('click', async () => {
+                const nextRaw = prompt(`重命名分类「${label}」为：`, folder);
+                if (!nextRaw) return;
+                const cleanNext = nextRaw.trim().replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '-');
+                if (!cleanNext || cleanNext === folder) return;
+
+                const oldColor = getCategoryColor(folder);
+                categoryMetaMap.delete(folder);
+                categoryMetaMap.set(cleanNext, { name: cleanNext, color: oldColor });
+
+                const affectedKeys = allImages.filter(i => (i.folder || 'default') === folder).map(i => i.key);
+                if (affectedKeys.length > 0) {
+                    await moveImagesToCategory(affectedKeys, cleanNext);
+                } else {
+                    await syncCategoriesToCloud();
+                }
+
+                if (currentFolder === folder) currentFolder = cleanNext;
+                renderCategoryStudioList();
+                renderSpace();
+                toast(`分类已重命名为「${cleanNext}」`);
+            });
+
+            // 点击删除分类（安全将照片归入默认归档）
+            row.querySelector('.btn-cat-delete')?.addEventListener('click', async () => {
+                const msg = count > 0
+                    ? `确定删除分类「${label}」吗？\n该分类下的 ${count} 幅影像不会丢失，将自动移入「默认归档」。`
+                    : `确定删除空分类「${label}」吗？`;
+                if (!confirm(msg)) return;
+
+                categoryMetaMap.delete(folder);
+                const affectedKeys = allImages.filter(i => (i.folder || 'default') === folder).map(i => i.key);
+                if (affectedKeys.length > 0) {
+                    await moveImagesToCategory(affectedKeys, 'default');
+                } else {
+                    await syncCategoriesToCloud();
+                }
+
+                if (currentFolder === folder) currentFolder = 'all';
+                renderCategoryStudioList();
+                renderSpace();
+                toast(`已删除分类「${label}」`);
+            });
+
+            catManageListEl.appendChild(row);
+        });
+    }
+
+    function openCategoryModal(focusNewInput = true, keysToMoveOnCreate = null) {
+        pendingMoveKeysAfterCreate = keysToMoveOnCreate;
+        renderNewCategoryPalette();
+        renderCategoryStudioList();
+        categoryModal?.classList.add('open');
+        if (focusNewInput) {
+            setTimeout(() => inputNewCatName?.focus(), 60);
+        }
+    }
+
+    function closeCategoryModal() {
+        pendingMoveKeysAfterCreate = null;
+        categoryModal?.classList.remove('open');
+    }
+
+    formCreateCategory?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const raw = (inputNewCatName?.value || '').trim();
+        if (!raw) {
+            toast('请输入新分类名称');
+            inputNewCatName?.focus();
+            return;
+        }
+        const clean = raw.replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '-');
+        if (!clean || clean === 'all') {
+            toast('请输入有效的分类名称');
+            return;
+        }
+
+        categoryMetaMap.set(clean, { name: clean, color: selectedNewCatColor });
+        if (inputNewCatName) inputNewCatName.value = '';
+
+        // 自动换下一个预设颜色方便连续创建
+        const nextIdx = (DYNAMIC_PALETTE.indexOf(selectedNewCatColor) + 1) % DYNAMIC_PALETTE.length;
+        selectedNewCatColor = DYNAMIC_PALETTE[nextIdx];
+
+        if (pendingMoveKeysAfterCreate && pendingMoveKeysAfterCreate.length > 0) {
+            const keys = [...pendingMoveKeysAfterCreate];
+            pendingMoveKeysAfterCreate = null;
+            await moveImagesToCategory(keys, clean);
+            closeCategoryModal();
+            return;
+        }
+
+        await syncCategoriesToCloud();
         currentFolder = clean;
+        renderNewCategoryPalette();
+        renderCategoryStudioList();
         renderSpace();
-        toast(`CREATED [${clean.toUpperCase()}]`);
+        toast(`已创建分类「${clean}」`);
     });
 
-    document.getElementById('search-input')?.addEventListener('input', (e) => {
+    document.getElementById('btn-new-folder')?.addEventListener('click', () => openCategoryModal(true));
+    document.getElementById('btn-manage-folders')?.addEventListener('click', () => openCategoryModal(false));
+    document.getElementById('mob-btn-cat')?.addEventListener('click', () => openCategoryModal(false));
+    document.getElementById('category-modal-close')?.addEventListener('click', closeCategoryModal);
+    categoryModal?.addEventListener('click', (e) => {
+        if (e.target === categoryModal) closeCategoryModal();
+    });
+
+    // 单张卡片快捷切换分类气泡菜单 (#quick-cat-popover)
+    const quickCatPopover = document.getElementById('quick-cat-popover');
+    const quickCatListEl = document.getElementById('quick-cat-list');
+    const quickCatNewBtn = document.getElementById('quick-cat-new-btn');
+    let activePopoverItemKey = null;
+
+    function closeQuickCatPopover() {
+        activePopoverItemKey = null;
+        if (quickCatPopover) quickCatPopover.hidden = true;
+    }
+
+    function openQuickCatPopover(item, anchorEl) {
+        if (!quickCatPopover || !quickCatListEl || !item) return;
+        activePopoverItemKey = item.key;
+        const currentItemFolder = item.folder || 'default';
+        const allCats = getAllCategoryNames();
+
+        quickCatListEl.innerHTML = '';
+        allCats.forEach(folder => {
+            const color = getCategoryColor(folder);
+            const label = formatFolderDisplayName(folder);
+            const isCurr = folder === currentItemFolder;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `popover-cat-item ${isCurr ? 'current' : ''}`;
+            btn.innerHTML = `
+                <span class="popover-cat-left">
+                    <span class="cat-badge-dot" style="background:${color}; width:7px; height:7px;"></span>
+                    <span>${label}</span>
+                </span>
+                <span>${isCurr ? '✓' : ''}</span>
+            `;
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                closeQuickCatPopover();
+                if (!isCurr) {
+                    await moveImagesToCategory([item.key], folder);
+                } else {
+                    currentFolder = folder;
+                    renderSpace();
+                }
+            });
+            quickCatListEl.appendChild(btn);
+        });
+
+        quickCatPopover.hidden = false;
+        const rect = anchorEl.getBoundingClientRect();
+        const popW = 200;
+        const popH = Math.min(260, allCats.length * 34 + 70);
+        let left = Math.min(window.innerWidth - popW - 12, Math.max(12, rect.left));
+        let top = rect.bottom + 6;
+        if (top + popH > window.innerHeight - 16) {
+            top = Math.max(12, rect.top - popH - 6);
+        }
+        quickCatPopover.style.left = `${left}px`;
+        quickCatPopover.style.top = `${top}px`;
+    }
+
+    quickCatNewBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const key = activePopoverItemKey;
+        closeQuickCatPopover();
+        if (key) {
+            openCategoryModal(true, [key]);
+        } else {
+            openCategoryModal(true);
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (quickCatPopover && !quickCatPopover.hidden && !quickCatPopover.contains(e.target)) {
+            closeQuickCatPopover();
+        }
+    });
+
+    // 搜索框与清空按钮
+    const searchInputEl = document.getElementById('search-input');
+    const searchClearBtn = document.getElementById('search-clear-btn');
+
+    searchInputEl?.addEventListener('input', (e) => {
         searchQuery = e.target.value.trim().toLowerCase();
+        if (searchClearBtn) searchClearBtn.hidden = !searchQuery;
+        renderSpace();
+    });
+
+    searchClearBtn?.addEventListener('click', () => {
+        if (searchInputEl) searchInputEl.value = '';
+        searchQuery = '';
+        searchClearBtn.hidden = true;
         renderSpace();
     });
 
     function renderSpace() {
         if (!isUnlocked) return;
+        closeQuickCatPopover();
         syncZoomUI();
         updateStorageQuotaUI();
         renderFolders();
 
-        // 1. 按上传时间从新到旧严格排序
+        // 1. 按上传时间从新到旧排序
         allImages.sort((a, b) => new Date(b.uploaded || 0).getTime() - new Date(a.uploaded || 0).getTime());
 
         // 2. 筛选分类与搜索词
@@ -906,7 +1422,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const f = item.folder || 'default';
             if (currentFolder !== 'all' && f !== currentFolder) return false;
             if (!searchQuery) return true;
-            const hay = [item.title, item.originalName, item.key, item.folder, item.exif?.camera].filter(Boolean).join(' ').toLowerCase();
+            const hay = [item.title, item.originalName, item.key, item.folder, formatFolderDisplayName(f), item.exif?.camera].filter(Boolean).join(' ').toLowerCase();
             return hay.includes(searchQuery);
         });
 
@@ -917,13 +1433,16 @@ document.addEventListener("DOMContentLoaded", () => {
             storageStat.textContent = String(filteredImages.length);
         }
         if (editorialTitleEl) {
-            editorialTitleEl.textContent = currentFolder === 'all' ? 'ALL ARCHIVES' : currentFolder.toUpperCase();
+            editorialTitleEl.textContent = formatFolderDisplayName(currentFolder);
+        }
+        if (editorialCatDotEl) {
+            editorialCatDotEl.style.background = getCategoryColor(currentFolder);
         }
         if (editorialStatSummaryEl) {
-            editorialStatSummaryEl.textContent = `${filteredImages.length} ${filteredImages.length === 1 ? 'WORK' : 'WORKS'} · ${formatBytes(filteredBytes)}`;
+            editorialStatSummaryEl.textContent = `共 ${filteredImages.length} 幅影像 · ${formatBytes(filteredBytes)}`;
         }
         if (editorialGridBadgeEl) {
-            editorialGridBadgeEl.textContent = `${numCols} ${numCols === 1 ? 'COLUMN' : 'COLUMNS'}`;
+            editorialGridBadgeEl.textContent = `${numCols} 列视图`;
         }
 
         if (!timelineStreamEl || !emptyStageEl) return;
@@ -937,7 +1456,7 @@ document.addEventListener("DOMContentLoaded", () => {
         emptyStageEl.hidden = true;
         timelineStreamEl.innerHTML = '';
 
-        // 3. 按日期分组构建时间线 (Chronological Timeline Grouping)
+        // 3. 按日期分组构建时间线
         const dayGroups = new Map();
         filteredImages.forEach((item, globalFilteredIdx) => {
             const dInfo = formatDateHeading(item.uploaded);
@@ -954,7 +1473,7 @@ document.addEventListener("DOMContentLoaded", () => {
         dayGroups.forEach((group) => {
             const section = document.createElement('section');
             section.className = 'timeline-section';
-            section.style.animationDelay = `${Math.min(sectionIdx * 65, 260)}ms`;
+            section.style.animationDelay = `${Math.min(sectionIdx * 60, 240)}ms`;
             sectionIdx++;
 
             const dayBytes = group.entries.reduce((acc, e) => acc + (Number(e.item.size) || 0), 0);
@@ -967,14 +1486,13 @@ document.addEventListener("DOMContentLoaded", () => {
                         <span class="timeline-date-sub">${group.sub}</span>
                     </div>
                     <div class="timeline-meta-right">
-                        <span>${group.entries.length} ITEMS · ${formatBytes(dayBytes)}</span>
+                        <span>${group.entries.length} 幅 · ${formatBytes(dayBytes)}</span>
                         <button type="button" class="timeline-select-day-btn">全选当天</button>
                     </div>
                 </div>
                 <div class="masonry-board" style="grid-template-columns: repeat(${numCols}, 1fr);"></div>
             `;
 
-            // 点击“全选当天”快速勾选或取消当天所有照片
             const selectDayBtn = section.querySelector('.timeline-select-day-btn');
             selectDayBtn.addEventListener('click', () => {
                 const allDaySelected = group.entries.every(e => selectedKeys.has(e.item.key));
@@ -1012,8 +1530,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 const isSelected = selectedKeys.has(item.key);
                 card.className = `photo-item ${isSelected ? 'selected' : ''}`;
                 card.dataset.key = item.key;
+                card.draggable = true;
+
+                // 支持拖拽卡片到顶部分类胶囊直接归档
+                card.addEventListener('dragstart', (e) => {
+                    e.dataTransfer?.setData('text/xiang-photo-key', item.key);
+                });
 
                 const folderName = item.folder || 'default';
+                const folderLabel = formatFolderDisplayName(folderName);
                 const catColor = getCategoryColor(folderName);
                 const name = item.title || item.originalName || item.key.split('/').pop();
                 const info = (w && h) ? `${w}×${h}` : formatBytes(item.size);
@@ -1025,17 +1550,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 card.innerHTML = `
                     <div class="photo-thumb-wrap" ${aspectStyle}>
-                        <button type="button" class="thumb-check" title="勾选">${isSelected ? '✓' : ''}</button>
+                        <button type="button" class="thumb-check" title="勾选此影像">${isSelected ? '✓' : ''}</button>
                         <img src="${thumbUrl}" alt="${name}" ${priorityAttr} decoding="async">
                         <div class="thumb-retry-overlay" hidden><span>加载较慢 · 点击重试</span></div>
-                        <button type="button" class="thumb-copy-btn" title="复制原图直链">COPY</button>
+                        <button type="button" class="thumb-copy-btn" title="复制原图直链">复制链接</button>
                     </div>
                     <div class="photo-caption">
                         <div class="caption-left">
-                            <span class="cat-badge" style="--cat-color: ${catColor}" title="点击筛选 ${folderName}">
+                            <button type="button" class="cat-badge" style="--cat-color: ${catColor}" title="点击切换此影像的所属分类">
                                 <span class="cat-badge-dot"></span>
-                                <span>${folderName}</span>
-                            </span>
+                                <span>${folderLabel}</span>
+                            </button>
                             <span class="caption-name">${name}</span>
                         </div>
                         <span class="caption-info">${info}</span>
@@ -1047,8 +1572,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 const retryOverlay = card.querySelector('.thumb-retry-overlay');
                 const infoSpan = card.querySelector('.caption-info');
                 const copyBtn = card.querySelector('.thumb-copy-btn');
+                const catBadgeBtn = card.querySelector('.cat-badge');
 
-                // 若已有 24px 极速模糊占位图 LQIP，立即 0ms 铺底渲染
                 if (item.lqip && thumbWrap) {
                     thumbWrap.style.backgroundImage = `url(${item.lqip})`;
                     thumbWrap.style.backgroundSize = 'cover';
@@ -1071,7 +1596,6 @@ document.addEventListener("DOMContentLoaded", () => {
                         if (infoSpan) infoSpan.textContent = `${item.width}×${item.height}`;
                     }
 
-                    // 如果这是历史上传的原图（尚无 720px WebP 缩略图或 LQIP），自动在后台回填至 R2
                     if (!item.thumbKey || !item.lqip) {
                         queueBackfillThumb(item, imgEl);
                     }
@@ -1097,10 +1621,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     imgEl.src = `${thumbUrl}${sep}_retry=${Date.now()}`;
                 });
 
-                card.querySelector('.cat-badge').addEventListener('click', (e) => {
+                // 点击卡片左下角分类胶囊弹出快捷切换分类菜单
+                catBadgeBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    currentFolder = folderName;
-                    renderSpace();
+                    openQuickCatPopover(item, catBadgeBtn);
                 });
 
                 card.querySelector('.thumb-check').addEventListener('click', (e) => {
@@ -1110,12 +1634,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 copyBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    copyText(fullUrl, 'URL');
+                    copyText(fullUrl, '直链');
                     copyBtn.classList.add('copied');
-                    copyBtn.textContent = '✓ COPIED';
+                    copyBtn.textContent = '✓ 已复制';
                     setTimeout(() => {
                         copyBtn.classList.remove('copied');
-                        copyBtn.textContent = 'COPY';
+                        copyBtn.textContent = '复制链接';
                     }, 1200);
                 });
 
@@ -1165,9 +1689,10 @@ document.addEventListener("DOMContentLoaded", () => {
         document.body.classList.toggle('batch-active', active);
         btnBatchToggle?.classList.toggle('active', active);
         mobBtnBatch?.classList.toggle('active', active);
+        if (btnBatchToggle) btnBatchToggle.textContent = active ? '退出批量' : '批量管理';
         if (mobBtnBatch) mobBtnBatch.textContent = active ? '完成' : '多选';
         if (selectionDock) selectionDock.hidden = !active;
-        if (selCountEl) selCountEl.textContent = `${count} SELECTED`;
+        if (selCountEl) selCountEl.textContent = `已选 ${count} 项`;
     }
 
     function toggleSelection(key) {
@@ -1179,9 +1704,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function clearBatchMode() {
         isBatchMode = false;
+        const prev = Array.from(selectedKeys);
         selectedKeys.clear();
+        prev.forEach(k => updateSelectionCardDOM(k));
         syncBatchUI();
-        renderSpace();
     }
 
     function handleToggleBatchMode() {
@@ -1190,7 +1716,6 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             isBatchMode = true;
             syncBatchUI();
-            toast('BATCH MODE · 点击任意图片即可多选');
         }
     }
 
@@ -1198,104 +1723,81 @@ document.addEventListener("DOMContentLoaded", () => {
     mobBtnBatch?.addEventListener('click', handleToggleBatchMode);
 
     document.getElementById('btn-sel-all')?.addEventListener('click', () => {
-        const allSelected = filteredImages.every(i => selectedKeys.has(i.key));
-        filteredImages.forEach(i => {
-            if (allSelected) selectedKeys.delete(i.key);
-            else selectedKeys.add(i.key);
-            updateSelectionCardDOM(i.key);
+        filteredImages.forEach(item => {
+            selectedKeys.add(item.key);
+            updateSelectionCardDOM(item.key);
         });
         syncBatchUI();
     });
 
     document.getElementById('btn-sel-invert')?.addEventListener('click', () => {
-        filteredImages.forEach(i => {
-            if (selectedKeys.has(i.key)) selectedKeys.delete(i.key);
-            else selectedKeys.add(i.key);
-            updateSelectionCardDOM(i.key);
+        filteredImages.forEach(item => {
+            if (selectedKeys.has(item.key)) selectedKeys.delete(item.key);
+            else selectedKeys.add(item.key);
+            updateSelectionCardDOM(item.key);
         });
         syncBatchUI();
     });
 
-    batchMoveSelect?.addEventListener('change', async () => {
-        let targetFolder = batchMoveSelect.value;
-        batchMoveSelect.value = '';
-        if (!targetFolder) return;
+    batchMoveSelect?.addEventListener('change', async (e) => {
+        let target = e.target.value;
+        e.target.value = '';
+        if (!target) return;
 
         const keys = Array.from(selectedKeys);
-        if (keys.length === 0) return toast('请先勾选需要移动的图片');
+        if (!keys.length) return toast('请先勾选要移动的影像');
 
-        if (targetFolder === '__new__') {
-            const input = prompt('输入新分类名称:');
-            if (!input) return;
-            targetFolder = input.trim().replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '-');
-            if (!targetFolder) return;
-            customFolders.add(targetFolder);
+        if (target === '__new__') {
+            openCategoryModal(true, keys);
+            return;
         }
 
-        toast(`MOVING ${keys.length} ITEMS TO [${targetFolder.toUpperCase()}]...`);
-
-        if (isR2Connected) {
-            const headers = { 'Content-Type': 'application/json' };
-            if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
-            const res = await fetch('/api/images', {
-                method: 'PATCH',
-                headers,
-                body: JSON.stringify({ keys, folder: targetFolder })
-            });
-            const data = await res.json();
-            if (!res.ok || !data.ok) {
-                return toast(data.error || '批量移动失败');
-            }
-        }
-
-        const keySet = new Set(keys);
-        allImages.forEach(item => {
-            if (keySet.has(item.key)) item.folder = targetFolder;
-        });
-        if (!isR2Connected) saveLocalItems();
-        clearBatchMode();
-        toast(`MOVED TO [${targetFolder.toUpperCase()}]`);
+        await moveImagesToCategory(keys, target);
     });
 
+    function getSelectedItemsList() {
+        return filteredImages.filter(i => selectedKeys.has(i.key));
+    }
+
     document.getElementById('btn-sel-copy-url')?.addEventListener('click', () => {
-        const items = allImages.filter(i => selectedKeys.has(i.key));
-        if (!items.length) return toast('请先选择图片');
-        copyText(items.map(i => getFullUrl(i)).join('\n'), `${items.length} URLS`);
+        const items = getSelectedItemsList();
+        if (!items.length) return toast('请先勾选影像');
+        copyText(items.map(i => buildFormats(i).url).join('\n'), `${items.length} 条直链`);
     });
 
     document.getElementById('btn-sel-copy-md')?.addEventListener('click', () => {
-        const items = allImages.filter(i => selectedKeys.has(i.key));
-        if (!items.length) return toast('请先选择图片');
-        copyText(items.map(i => buildFormats(i).md).join('\n'), `${items.length} MARKDOWN`);
+        const items = getSelectedItemsList();
+        if (!items.length) return toast('请先勾选影像');
+        copyText(items.map(i => buildFormats(i).md).join('\n'), `${items.length} 条 Markdown`);
     });
 
     document.getElementById('btn-sel-copy-html')?.addEventListener('click', () => {
-        const items = allImages.filter(i => selectedKeys.has(i.key));
-        if (!items.length) return toast('请先选择图片');
-        copyText(items.map(i => buildFormats(i).html).join('\n'), `${items.length} HTML`);
+        const items = getSelectedItemsList();
+        if (!items.length) return toast('请先勾选影像');
+        copyText(items.map(i => buildFormats(i).html).join('\n'), `${items.length} 条 HTML`);
     });
 
     document.getElementById('btn-sel-download')?.addEventListener('click', () => {
-        const items = allImages.filter(i => selectedKeys.has(i.key));
-        if (!items.length) return toast('请先选择图片');
+        const items = getSelectedItemsList();
+        if (!items.length) return toast('请先勾选影像');
         items.forEach((item, idx) => {
             setTimeout(() => {
                 const a = document.createElement('a');
                 a.href = getFullUrl(item);
-                a.download = item.originalName || `image-${idx + 1}.jpg`;
+                a.download = item.originalName || item.key.split('/').pop();
                 a.target = '_blank';
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
             }, idx * 220);
         });
-        toast(`DOWNLOADING ${items.length} FILES`);
+        toast(`开始下载 ${items.length} 幅影像`);
     });
 
     document.getElementById('btn-sel-delete')?.addEventListener('click', async () => {
         const keys = Array.from(selectedKeys);
-        if (!keys.length) return toast('请先勾选要删除的图片');
-        if (!confirm(`确定永久删除选中的 ${keys.length} 张图片吗？`)) return;
+        if (!keys.length) return toast('请先勾选要删除的影像');
+        if (!confirm(`确定永久删除选中的 ${keys.length} 幅影像吗？`)) return;
         const ok = await deleteImages(keys);
         if (ok) clearBatchMode();
     });
@@ -1321,12 +1823,12 @@ document.addEventListener("DOMContentLoaded", () => {
         allImages = allImages.filter(i => !delSet.has(i.key));
         if (!isR2Connected) saveLocalItems();
         renderSpace();
-        toast(`DELETED ${keys.length} ITEMS`);
+        toast(`已删除 ${keys.length} 幅影像`);
         return true;
     }
 
     /* =========================================================
-       7. 极速双层上传引擎 (自动生成 1080px WebP 预览图 + 原图并发入库)
+       7. 极速双层上传引擎 (720px WebP 缩略图 + 24px LQIP + 原生 EXIF)
     ========================================================= */
     const fileInput = document.getElementById('file-input');
     const dropOverlay = document.getElementById('drop-overlay');
@@ -1336,6 +1838,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const ribbonPercent = document.getElementById('ribbon-percent');
 
     document.getElementById('btn-upload')?.addEventListener('click', () => fileInput?.click());
+    document.getElementById('btn-upload-to-current')?.addEventListener('click', () => fileInput?.click());
     document.getElementById('mob-btn-upload')?.addEventListener('click', () => fileInput?.click());
     document.getElementById('empty-drop-trigger')?.addEventListener('click', () => fileInput?.click());
 
@@ -1383,7 +1886,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (files.length) uploadFiles(files);
     });
 
-    // 原生零依赖极速 EXIF 二进制解析器 (<1ms，彻底告别海外 CDN 阻塞)
+    // 原生零依赖极速 EXIF 二进制解析器 (<1ms)
     async function parseExif(file) {
         if (!file || !file.type.includes('jpeg')) return {};
         try {
@@ -1399,7 +1902,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (marker === 0xFFE1) {
                     const length = view.getUint16(offset, false);
                     if (offset + 8 >= view.byteLength) break;
-                    // "Exif\0\0"
                     if (view.getUint32(offset + 2, false) !== 0x45786966) {
                         offset += length;
                         continue;
@@ -1491,7 +1993,6 @@ document.addEventListener("DOMContentLoaded", () => {
         let width = img.naturalWidth || 1920;
         let height = img.naturalHeight || 1080;
 
-        // 生成 720px 高清极速 WebP 缩略图 (~25KB，专为国内跨洋链路秒开优化) + 24px 0ms 瞬时模糊图 LQIP (~300B)
         let thumbBlob = null;
         let lqip = '';
         if (file.type !== 'image/svg+xml' && file.type !== 'image/gif') {
@@ -1526,15 +2027,16 @@ document.addEventListener("DOMContentLoaded", () => {
         return { file: out, thumbBlob, lqip, width, height };
     }
 
-    async function uploadFiles(files) {
-        const targetFolder = currentFolder === 'all' ? 'default' : currentFolder;
+    async function uploadFiles(files, explicitFolder = null) {
+        const targetFolder = explicitFolder || (currentFolder === 'all' ? 'default' : currentFolder);
+        const targetLabel = formatFolderDisplayName(targetFolder);
         if (uploadRibbon) uploadRibbon.hidden = false;
 
         let completed = 0;
         const total = files.length;
 
         for (const rawFile of files) {
-            if (ribbonText) ribbonText.textContent = `Uploading ${rawFile.name} (${completed + 1}/${total})...`;
+            if (ribbonText) ribbonText.textContent = `正在上传 ${rawFile.name} 至「${targetLabel}」(${completed + 1}/${total})...`;
             const pct = Math.round(((completed + 0.25) / total) * 100);
             if (ribbonBar) ribbonBar.style.width = `${pct}%`;
             if (ribbonPercent) ribbonPercent.textContent = `${pct}%`;
@@ -1558,7 +2060,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                     fd.append('folder', targetFolder);
                     fd.append('customName', rawFile.name.replace(/\.[^/.]+$/, ''));
-                    fd.append('title', rawFile.name);
+                    fd.append('title', rawFile.name.replace(/\.[^/.]+$/, ''));
                     fd.append('width', String(width));
                     fd.append('height', String(height));
                     fd.append('exif', JSON.stringify(exif));
@@ -1569,7 +2071,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     const res = await fetch('/api/images', { method: 'POST', headers, body: fd });
                     const data = await res.json();
                     if (!res.ok || !data.ok) {
-                        throw new Error(data.error || 'Upload failed');
+                        throw new Error(data.error || '上传失败');
                     }
                     newItem = data.item;
                 } else {
@@ -1587,7 +2089,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         uploaded: new Date().toISOString(),
                         folder: targetFolder,
                         originalName: file.name,
-                        title: rawFile.name,
+                        title: rawFile.name.replace(/\.[^/.]+$/, ''),
                         width,
                         height,
                         isDemo: true,
@@ -1608,7 +2110,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         if (completed > 0) {
-            toast(`UPLOADED ${completed} ${completed === 1 ? 'IMAGE' : 'IMAGES'}`);
+            toast(`已成功上传 ${completed} 幅影像至「${targetLabel}」`);
         }
         setTimeout(() => {
             if (uploadRibbon) uploadRibbon.hidden = true;
@@ -1617,7 +2119,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     /* =========================================================
-       8. 零卡顿极速详情检视层 (Zero-Jank Instant Viewer + Mobile Touch Swipe)
+       8. 零卡顿极速详情检视层 (Zero-Jank Instant Viewer)
     ========================================================= */
     const viewerModal = document.getElementById('viewer-modal');
     const viewerStage = document.getElementById('viewer-stage');
@@ -1626,6 +2128,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const metaTitleInput = document.getElementById('meta-title-input');
     const metaFolderInput = document.getElementById('meta-folder-input');
     const viewerFolderDot = document.getElementById('viewer-folder-dot');
+    const viewerCatChipsEl = document.getElementById('viewer-cat-chips');
     const exifBlock = document.getElementById('exif-block');
     const exifList = document.getElementById('exif-list');
 
@@ -1639,6 +2142,32 @@ document.addEventListener("DOMContentLoaded", () => {
     function closeViewer() {
         activeViewerIdx = -1;
         viewerModal?.classList.remove('open');
+    }
+
+    function renderViewerCategoryChips(currentItem) {
+        if (!viewerCatChipsEl || !currentItem) return;
+        const currFolder = currentItem.folder || 'default';
+        const allCats = getAllCategoryNames();
+        viewerCatChipsEl.innerHTML = '';
+
+        allCats.forEach(folder => {
+            const color = getCategoryColor(folder);
+            const label = formatFolderDisplayName(folder);
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = `viewer-chip ${folder === currFolder ? 'active' : ''}`;
+            chip.innerHTML = `
+                <span class="cat-badge-dot" style="background:${color}; width:6px; height:6px;"></span>
+                <span>${label}</span>
+            `;
+            chip.addEventListener('click', async () => {
+                if (metaFolderInput) metaFolderInput.value = folder;
+                if (viewerFolderDot) viewerFolderDot.style.background = color;
+                await moveImagesToCategory([currentItem.key], folder);
+                renderViewerCategoryChips(currentItem);
+            });
+            viewerCatChipsEl.appendChild(chip);
+        });
     }
 
     function populateViewer(alreadyDecodedSrc = null) {
@@ -1656,7 +2185,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (btnLoadHd) {
             if (fullUrl && fullUrl !== fastThumb) {
                 btnLoadHd.hidden = false;
-                btnLoadHd.textContent = `LOAD ORIGINAL HD (${formatBytes(item.size)})`;
+                btnLoadHd.textContent = `查看原图 (${formatBytes(item.size)})`;
                 btnLoadHd.disabled = false;
             } else {
                 btnLoadHd.hidden = true;
@@ -1667,8 +2196,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (metaTitleInput) metaTitleInput.value = item.title || item.originalName || '';
         if (metaFolderInput) metaFolderInput.value = folderName;
         if (viewerFolderDot) viewerFolderDot.style.background = getCategoryColor(folderName);
+        renderViewerCategoryChips(item);
 
-        document.getElementById('stat-dimensions').textContent = (item.width && item.height) ? `${item.width} × ${item.height}` : 'ORIGINAL';
+        document.getElementById('stat-dimensions').textContent = (item.width && item.height) ? `${item.width} × ${item.height}` : '原始比例';
         document.getElementById('stat-size').textContent = formatBytes(item.size);
         document.getElementById('stat-date').textContent = (item.uploaded || '').slice(0, 10);
 
@@ -1684,12 +2214,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const ex = item.exif || {};
         const entries = [
-            ['CAMERA', ex.camera],
-            ['LENS', ex.lens],
-            ['FOCAL', ex.focal],
-            ['APERTURE', ex.aperture],
-            ['SHUTTER', ex.shutter],
-            ['ISO', ex.iso]
+            ['机身型号', ex.camera],
+            ['镜头规格', ex.lens],
+            ['焦距', ex.focal],
+            ['光圈', ex.aperture],
+            ['快门速度', ex.shutter],
+            ['感光度 ISO', ex.iso]
         ].filter(([, v]) => Boolean(v));
 
         if (entries.length > 0 && exifBlock && exifList) {
@@ -1709,7 +2239,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const item = filteredImages[activeViewerIdx];
         if (!item) return;
         const fullUrl = getFullUrl(item);
-        btnLoadHd.textContent = 'DECODING HD...';
+        btnLoadHd.textContent = '正在加载原图...';
         btnLoadHd.disabled = true;
 
         try {
@@ -1725,7 +2255,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 btnLoadHd.hidden = true;
             }
         } catch {
-            btnLoadHd.textContent = 'HD LOAD FAILED';
+            btnLoadHd.textContent = '原图加载失败 · 点击重试';
+            btnLoadHd.disabled = false;
         }
     });
 
@@ -1741,8 +2272,8 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!item) return;
             const formats = buildFormats(item);
             const fmt = btn.dataset.format;
-            if (fmt === 'url') copyText(formats.url, 'URL');
-            if (fmt === 'md') copyText(formats.md, 'MARKDOWN');
+            if (fmt === 'url') copyText(formats.url, '直链');
+            if (fmt === 'md') copyText(formats.md, 'Markdown');
             if (fmt === 'html') copyText(formats.html, 'HTML');
         });
     });
@@ -1751,7 +2282,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const item = filteredImages[activeViewerIdx];
         if (!item) return;
         const newTitle = metaTitleInput.value.trim();
-        const newFolder = metaFolderInput.value.trim() || 'default';
+        const newFolder = (metaFolderInput.value.trim() || 'default').replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '-');
+
+        if (newFolder !== 'default' && !categoryMetaMap.has(newFolder)) {
+            categoryMetaMap.set(newFolder, { name: newFolder, color: getCategoryColor(newFolder) });
+            saveLocalCategories();
+        }
 
         if (isR2Connected && !item.isDemo) {
             const headers = { 'Content-Type': 'application/json' };
@@ -1759,7 +2295,12 @@ document.addEventListener("DOMContentLoaded", () => {
             const res = await fetch('/api/images', {
                 method: 'PATCH',
                 headers,
-                body: JSON.stringify({ key: item.key, title: newTitle, folder: newFolder })
+                body: JSON.stringify({
+                    key: item.key,
+                    title: newTitle,
+                    folder: newFolder,
+                    categories: Array.from(categoryMetaMap.values())
+                })
             });
             const data = await res.json();
             if (!res.ok || !data.ok) {
@@ -1772,13 +2313,13 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!isR2Connected) saveLocalItems();
         populateViewer();
         renderSpace();
-        toast('SAVED');
+        toast('影像信息已保存');
     });
 
     document.getElementById('btn-delete-single')?.addEventListener('click', async () => {
         const item = filteredImages[activeViewerIdx];
         if (!item) return;
-        if (!confirm(`确定删除 [${item.title || item.originalName}] 吗？`)) return;
+        if (!confirm(`确定删除影像「${item.title || item.originalName}」吗？`)) return;
         const ok = await deleteImages([item.key]);
         if (ok) closeViewer();
     });
@@ -1812,7 +2353,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if (e.target.id === 'viewer-stage') closeViewer();
     });
 
-    // 移动端看图区左右滑动手势切换上下张
     let swipeStartX = 0;
     let swipeStartY = 0;
     viewerStage?.addEventListener('touchstart', (e) => {
@@ -1883,13 +2423,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 adminToken = nextPwd;
                 localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
                 if (inputNewPassword) inputNewPassword.value = '';
-                toast('密码已更新并加密保存至 R2');
+                toast('新密码已加密保存至云端存储桶');
             } catch {
                 toast('网络错误，密码修改失败');
                 return;
             }
         } else {
-            toast('SETTINGS SAVED');
+            toast('空间设置已保存');
         }
 
         closeSettings();
@@ -1909,7 +2449,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
         if (e.key === 'Escape') {
             if (activeViewerIdx >= 0) closeViewer();
+            else if (categoryModal?.classList.contains('open')) closeCategoryModal();
             else if (settingsModal?.classList.contains('open')) closeSettings();
+            else if (quickCatPopover && !quickCatPopover.hidden) closeQuickCatPopover();
             else if (isBatchMode || selectedKeys.size > 0) clearBatchMode();
         } else if (activeViewerIdx >= 0) {
             if (e.key === 'ArrowLeft') showPrevViewerImage();
@@ -1923,8 +2465,10 @@ document.addEventListener("DOMContentLoaded", () => {
     probeServerStatus();
 
     if (adminToken) {
+        updateSiteLoader(75, '正在自动验证密钥并同步影像库...');
         tryUnlockAndLoad(adminToken, true);
     } else {
+        updateSiteLoader(85, '空间已就绪 · 请验证访问密码');
         showLockUI();
     }
 });

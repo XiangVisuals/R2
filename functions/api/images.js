@@ -29,6 +29,7 @@ function getTokenFromRequest(request) {
 }
 
 const AUTH_CONFIG_KEY = ".sys/auth.json";
+const CATEGORIES_CONFIG_KEY = ".sys/categories.json";
 
 async function sha256Hex(text) {
   const data = new TextEncoder().encode(text);
@@ -36,6 +37,41 @@ async function sha256Hex(text) {
   return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+async function readR2Categories(bucket) {
+  if (!bucket) return [];
+  try {
+    const obj = await bucket.get(CATEGORIES_CONFIG_KEY);
+    if (!obj) return [];
+    const data = await obj.json();
+    return Array.isArray(data?.categories) ? data.categories : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeR2Categories(bucket, categories) {
+  if (!bucket) return [];
+  const cleanList = Array.isArray(categories)
+    ? categories
+        .filter((c) => c && typeof c.name === "string" && c.name.trim())
+        .map((c) => ({
+          name: c.name.trim().slice(0, 40),
+          color: typeof c.color === "string" ? c.color.trim().slice(0, 24) : "",
+        }))
+    : [];
+  await bucket.put(
+    CATEGORIES_CONFIG_KEY,
+    JSON.stringify({
+      categories: cleanList,
+      updatedAt: new Date().toISOString(),
+    }),
+    {
+      httpMetadata: { contentType: "application/json" },
+    }
+  );
+  return cleanList;
 }
 
 /**
@@ -119,7 +155,7 @@ async function verifyAdmin(request, env) {
     if (!token || token !== adminPassword) {
       return {
         authorized: false,
-        reason: "密码错误，请重新输入 (INVALID PASSWORD)",
+        reason: "访问密码不正确，请重新输入",
       };
     }
     return { authorized: true, source: "env" };
@@ -132,14 +168,14 @@ async function verifyAdmin(request, env) {
       if (!token) {
         return {
           authorized: false,
-          reason: "请输入访问密码 (PASSWORD REQUIRED)",
+          reason: "请输入访问密码",
         };
       }
       const attemptHash = await sha256Hex(token);
       if (attemptHash !== storedHash) {
         return {
           authorized: false,
-          reason: "密码错误，请重新输入 (INVALID PASSWORD)",
+          reason: "访问密码不正确，请重新输入",
         };
       }
       return { authorized: true, source: "r2" };
@@ -273,12 +309,15 @@ export async function onRequestGet(context) {
     const cursor = url.searchParams.get("cursor") || undefined;
     const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get("limit")) || 800));
 
-    const listed = await bucket.list({
-      prefix,
-      cursor,
-      limit,
-      include: ["httpMetadata", "customMetadata"],
-    });
+    const [listed, storedCategories] = await Promise.all([
+      bucket.list({
+        prefix,
+        cursor,
+        limit,
+        include: ["httpMetadata", "customMetadata"],
+      }),
+      readR2Categories(bucket),
+    ]);
 
     const items = (listed.objects || [])
       .filter((obj) => !obj.key.endsWith("/.keep") && !obj.key.startsWith(".sys/") && !obj.key.startsWith(".thumbs/"))
@@ -286,6 +325,9 @@ export async function onRequestGet(context) {
       .sort((a, b) => new Date(b.uploaded).getTime() - new Date(a.uploaded).getTime());
 
     const folderSet = new Set(["default"]);
+    storedCategories.forEach((c) => {
+      if (c && c.name) folderSet.add(c.name);
+    });
     items.forEach((item) => {
       if (item.folder) folderSet.add(item.folder);
     });
@@ -299,6 +341,7 @@ export async function onRequestGet(context) {
       publicDomain: env.PUBLIC_R2_DOMAIN || new URL(request.url).origin + "/raw",
       items,
       folders: Array.from(folderSet),
+      categories: storedCategories,
       truncated: listed.truncated || false,
       cursor: listed.cursor || null,
     });
@@ -383,7 +426,7 @@ export async function onRequestPost(context) {
     const thumbFile = formData.get("thumb");
 
     if (!file || typeof file === "string") {
-      return jsonResponse({ ok: false, error: "未收到有效的文件数据 (Missing file)" }, 400);
+      return jsonResponse({ ok: false, error: "未收到有效的文件数据" }, 400);
     }
 
     const rawFolder = (formData.get("folder") || "default")
@@ -492,13 +535,13 @@ export async function onRequestPatch(context) {
 
   const { bucket } = resolveEnvBindings(env);
   if (!bucket) {
-    return jsonResponse({ ok: false, error: "R2 Bucket not bound" }, 503);
+    return jsonResponse({ ok: false, error: "R2 存储桶未绑定" }, 503);
   }
 
   try {
     const body = await request.json();
 
-    // Support changing the R2-persisted password directly from Settings
+    // 1. Support changing the R2-persisted password directly from Settings
     if (body.action === "changePassword") {
       const nextPwd = String(body.newPassword || "").trim();
       if (!nextPwd || nextPwd.length < 3) {
@@ -508,11 +551,22 @@ export async function onRequestPatch(context) {
       return jsonResponse({ ok: true, message: "密码已加密保存至 R2 存储桶" });
     }
 
+    // 2. Support saving custom categories (names + custom colors) to .sys/categories.json
+    if (body.action === "saveCategories") {
+      const saved = await writeR2Categories(bucket, body.categories);
+      return jsonResponse({ ok: true, categories: saved });
+    }
+
+    // 3. Support updating image metadata (title / folder) and optional category list sync
+    if (Array.isArray(body.categories)) {
+      await writeR2Categories(bucket, body.categories);
+    }
+
     const keys = Array.isArray(body.keys) ? body.keys : (body.key ? [body.key] : []);
     const { title, folder } = body;
 
     if (keys.length === 0) {
-      return jsonResponse({ ok: false, error: "Missing key(s)" }, 400);
+      return jsonResponse({ ok: true, items: [], item: null });
     }
 
     const updatedItems = [];
