@@ -5,35 +5,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>XIANG — Space</title>
     <link rel="icon" href="https://cllli.oss-cn-beijing.aliyuncs.com/logo/logo.svg" type="image/svg+xml">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@300;400;500&family=Montserrat:wght@300;400;500&display=swap">
-    <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
+    <!-- 国内极速非阻塞字体镜像加载：0ms 首屏渲染，绝不卡白屏 -->
+    <link rel="preconnect" href="https://fonts.loli.net" crossorigin>
+    <link rel="stylesheet" href="https://fonts.loli.net/css2?family=Cinzel:wght@500;600&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@300;400;500&family=Montserrat:wght@300;400;500&display=swap" media="print" onload="this.media='all'">
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body class="locked">
 
     <!-- =========================================================
-         0. 首屏密码门禁 (Strict Password Lock Screen)
-         严格校验 Cloudflare ADMIN_PASSWORD，绝不随意放行
+         0. 首屏高定金库式密码门禁 (Kinetic Editorial Lock Vault)
+         支持打字灵动脉冲、环形解锁动画与丝滑揭幕过渡
     ========================================================= -->
     <div id="lock-screen" class="lock-screen">
-        <div class="lock-box">
+        <!-- 环境呼吸光晕与建筑感微网格 -->
+        <div class="lock-ambient-grid" aria-hidden="true"></div>
+        <div class="lock-ambient-glow" id="lock-ambient-glow" aria-hidden="true"></div>
+
+        <div class="lock-box" id="lock-box">
             <div class="lock-mark-wrap">
-                <span class="lock-mark"></span>
+                <span class="lock-mark" id="lock-mark"></span>
                 <span class="lock-brand">XIANG SPACE</span>
             </div>
-            <p class="lock-subtitle">PRIVATE IMAGE ARCHIVE · 私人影像空间</p>
+            <p class="lock-subtitle">PRIVATE VISUAL ARCHIVE · 私人影像典藏馆</p>
 
             <form id="lock-form" class="lock-form" autocomplete="off">
-                <div class="lock-input-group">
-                    <input type="password" id="lock-password-input" class="lock-input" placeholder="Enter Access Password..." autofocus>
-                    <button type="submit" id="lock-submit-btn" class="lock-submit" aria-label="Unlock">→</button>
+                <div class="lock-input-group" id="lock-input-group">
+                    <input type="password" id="lock-password-input" class="lock-input" placeholder="Enter Access Key..." autofocus>
+                    <button type="submit" id="lock-submit-btn" class="lock-submit" aria-label="Unlock">
+                        <span class="submit-arrow">→</span>
+                        <span class="submit-spinner"></span>
+                    </button>
+                    <span class="lock-focus-line" id="lock-focus-line"></span>
                 </div>
+                <!-- 灵动按键能量指示点 -->
+                <div class="lock-key-dots" id="lock-key-dots" aria-hidden="true"></div>
                 <div class="lock-error" id="lock-error"></div>
             </form>
 
-            <div class="lock-footer-hint" id="lock-footer-hint">CHECKING CLOUDFLARE R2 NODE...</div>
+            <div class="lock-footer-status">
+                <span class="lock-pulse-dot" id="lock-pulse-dot"></span>
+                <span class="lock-footer-hint" id="lock-footer-hint">CONNECTING TO CLOUDFLARE R2 EDGE...</span>
+            </div>
         </div>
     </div>
 
@@ -44,7 +56,7 @@
     <div id="drop-overlay" class="drop-overlay" aria-hidden="true">
         <div class="drop-frame">
             <span class="drop-plus">+</span>
-            <p class="drop-title">DROP TO UPLOAD</p>
+            <p class="drop-title">DROP TO ARCHIVE</p>
             <span class="drop-sub" id="drop-target-hint">松开鼠标上传至当前分类</span>
         </div>
     </div>
@@ -116,9 +128,32 @@
     </div>
 
     <!-- =========================================================
-         2. 主画布：按时间线归档的真实宽高比无裁切画廊 (Timeline Archive)
+         2. 主画布：画廊典藏标题栏 + 呼吸骨架屏 + 真实宽高比无裁切时间线
     ========================================================= -->
     <main class="space-main" id="space-main">
+        <!-- 典藏馆信息题头 (Editorial Collection Header) -->
+        <section class="editorial-banner" id="editorial-banner">
+            <div class="editorial-left">
+                <span class="editorial-eyebrow" id="editorial-eyebrow">CHRONOLOGICAL VISUAL INDEX</span>
+                <h1 class="editorial-title" id="editorial-title">ALL ARCHIVES</h1>
+            </div>
+            <div class="editorial-right">
+                <span class="editorial-stat" id="editorial-stat-summary">0 WORKS · 0 MB</span>
+                <span class="editorial-divider">/</span>
+                <span class="editorial-grid-badge" id="editorial-grid-badge">4 COLUMNS</span>
+            </div>
+        </section>
+
+        <!-- 云端同步与首屏呼吸流光骨架屏 (Breathing Shimmer Skeleton) -->
+        <div class="skeleton-stage" id="skeleton-stage" hidden>
+            <div class="skeleton-grid">
+                <div class="skeleton-card" style="aspect-ratio: 3/2;"></div>
+                <div class="skeleton-card" style="aspect-ratio: 4/5;"></div>
+                <div class="skeleton-card" style="aspect-ratio: 16/10;"></div>
+                <div class="skeleton-card" style="aspect-ratio: 1/1;"></div>
+            </div>
+        </div>
+
         <!-- 空状态 -->
         <div class="empty-stage" id="empty-stage" hidden>
             <div class="empty-box" id="empty-drop-trigger">

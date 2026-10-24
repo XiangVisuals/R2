@@ -332,30 +332,86 @@ document.addEventListener("DOMContentLoaded", () => {
     const lockScreen = document.getElementById('lock-screen');
     const lockForm = document.getElementById('lock-form');
     const lockInput = document.getElementById('lock-password-input');
+    const lockInputGroup = document.getElementById('lock-input-group');
+    const lockSubmitBtn = document.getElementById('lock-submit-btn');
+    const lockMark = document.getElementById('lock-mark');
+    const lockKeyDots = document.getElementById('lock-key-dots');
     const lockError = document.getElementById('lock-error');
     const lockFooterHint = document.getElementById('lock-footer-hint');
     const r2ConnStatus = document.getElementById('r2-conn-status');
+    const skeletonStageEl = document.getElementById('skeleton-stage');
+
+    let typingBumpTimer = null;
+
+    function syncLockTypingVisualizer() {
+        const val = lockInput?.value || '';
+        const len = val.length;
+        lockMark?.classList.toggle('has-input', len > 0);
+        lockInputGroup?.classList.toggle('has-val', len > 0);
+
+        if (lockKeyDots) {
+            const maxDots = Math.min(len, 16);
+            const currentDots = lockKeyDots.children.length;
+            if (maxDots > currentDots) {
+                for (let i = currentDots; i < maxDots; i++) {
+                    const dot = document.createElement('span');
+                    dot.className = 'key-dot';
+                    lockKeyDots.appendChild(dot);
+                }
+            } else if (maxDots < currentDots) {
+                while (lockKeyDots.children.length > maxDots) {
+                    lockKeyDots.removeChild(lockKeyDots.lastChild);
+                }
+            }
+        }
+    }
+
+    lockInput?.addEventListener('input', () => {
+        if (lockError && !lockSubmitBtn?.classList.contains('verifying')) {
+            lockError.textContent = '';
+            lockError.classList.remove('ok-msg');
+        }
+        syncLockTypingVisualizer();
+        if (lockMark) {
+            lockMark.classList.add('typing-bump');
+            clearTimeout(typingBumpTimer);
+            typingBumpTimer = setTimeout(() => {
+                lockMark.classList.remove('typing-bump');
+            }, 150);
+        }
+    });
 
     function unlockUI() {
         isUnlocked = true;
+        lockSubmitBtn?.classList.remove('verifying');
         document.body.classList.remove('locked');
         lockScreen?.classList.add('unlocked');
-        if (lockError) lockError.textContent = '';
+        if (lockError) {
+            lockError.textContent = '';
+            lockError.classList.remove('ok-msg');
+        }
     }
 
     function showLockUI(hintMessage = '') {
         isUnlocked = false;
+        lockSubmitBtn?.classList.remove('verifying');
         document.body.classList.remove('batch-active');
         document.body.classList.add('locked');
         lockScreen?.classList.remove('unlocked');
+        syncLockTypingVisualizer();
         if (hintMessage && lockError) {
+            lockError.classList.remove('ok-msg');
             lockError.textContent = hintMessage;
         }
         setTimeout(() => lockInput?.focus(), 80);
     }
 
     function triggerLockShake(msg) {
-        if (lockError) lockError.textContent = msg;
+        lockSubmitBtn?.classList.remove('verifying');
+        if (lockError) {
+            lockError.classList.remove('ok-msg');
+            lockError.textContent = msg;
+        }
         if (lockForm) {
             lockForm.classList.remove('shake');
             void lockForm.offsetWidth;
@@ -396,6 +452,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function tryUnlockAndLoad(passwordAttempt, isInitialAutoCheck = false) {
+        lockSubmitBtn?.classList.add('verifying');
+        if (skeletonStageEl) skeletonStageEl.hidden = false;
+
         try {
             const headers = {};
             if (passwordAttempt) headers['Authorization'] = `Bearer ${passwordAttempt}`;
@@ -406,15 +465,21 @@ document.addEventListener("DOMContentLoaded", () => {
             // 仅当在本地 localhost 静态打开且无 Worker 路由时允许本地演示
             if (!ct.includes('application/json')) {
                 if (!isLocalhost) {
+                    if (skeletonStageEl) skeletonStageEl.hidden = true;
                     triggerLockShake('API 路由未就绪，请等待 Cloudflare 部署完成并刷新页面');
                     return false;
                 }
                 isR2Connected = false;
-                if (!passwordAttempt) return false;
+                if (!passwordAttempt) {
+                    lockSubmitBtn?.classList.remove('verifying');
+                    if (skeletonStageEl) skeletonStageEl.hidden = true;
+                    return false;
+                }
                 adminToken = passwordAttempt;
                 localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
                 allImages = loadLocalItems();
                 if (r2ConnStatus) r2ConnStatus.textContent = 'LOCAL PREVIEW · 本地开发演示模式';
+                if (skeletonStageEl) skeletonStageEl.hidden = true;
                 unlockUI();
                 renderSpace();
                 return true;
@@ -426,6 +491,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (res.status === 401 || res.status === 403 || data.locked || !data.isAdmin) {
                 localStorage.removeItem(STORAGE_KEYS.ADMIN_TOKEN);
                 adminToken = '';
+                if (skeletonStageEl) skeletonStageEl.hidden = true;
                 if (!isInitialAutoCheck) {
                     triggerLockShake(data.message || '密码错误，请重新输入 (INVALID PASSWORD)');
                 } else {
@@ -434,10 +500,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 return false;
             }
 
-            // 2. 密码验证通过！保存正确密码
+            // 2. 密码验证通过！保存正确密码并展示解锁反馈
             adminToken = passwordAttempt;
             localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
             isR2Connected = Boolean(data.r2Bound);
+
+            if (lockError && !isInitialAutoCheck) {
+                lockError.classList.add('ok-msg');
+                lockError.textContent = 'ACCESS GRANTED · 正在开启私人视觉空间';
+            }
 
             if (data.firstTimeInitialized) {
                 toast('已将您的密码 SHA-256 加密锁定至 R2 存储桶！');
@@ -453,6 +524,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const emptySub = document.querySelector('.empty-sub');
                 if (emptyTitle) emptyTitle.textContent = '密码验证通过，但尚未检测到 R2 存储桶绑定';
                 if (emptySub) emptySub.textContent = '请前往 Cloudflare Workers -> Settings -> Bindings 添加 R2 bucket 绑定 (名称: BUCKET)';
+                if (skeletonStageEl) skeletonStageEl.hidden = true;
                 unlockUI();
                 renderSpace();
                 toast('请绑定 R2 存储桶 BUCKET');
@@ -469,18 +541,25 @@ document.addEventListener("DOMContentLoaded", () => {
             if (emptyTitle) emptyTitle.textContent = '当前 R2 存储桶暂无图片 · 点击或拖拽上传第一张作品';
             if (emptySub) emptySub.textContent = '支持 JPG · PNG · WebP · GIF · SVG 真实比例时间线归档';
 
+            if (skeletonStageEl) skeletonStageEl.hidden = true;
             unlockUI();
             renderSpace();
             return true;
         } catch {
+            if (skeletonStageEl) skeletonStageEl.hidden = true;
             if (!isLocalhost) {
                 if (!isInitialAutoCheck) {
                     triggerLockShake('网络连接失败，请稍后重试');
+                } else {
+                    lockSubmitBtn?.classList.remove('verifying');
                 }
                 return false;
             }
             isR2Connected = false;
-            if (!passwordAttempt) return false;
+            if (!passwordAttempt) {
+                lockSubmitBtn?.classList.remove('verifying');
+                return false;
+            }
             adminToken = passwordAttempt;
             localStorage.setItem(STORAGE_KEYS.ADMIN_TOKEN, adminToken);
             allImages = loadLocalItems();
@@ -497,7 +576,10 @@ document.addEventListener("DOMContentLoaded", () => {
             triggerLockShake('请输入访问密码 (PLEASE ENTER PASSWORD)');
             return;
         }
-        if (lockError) lockError.textContent = 'VERIFYING...';
+        if (lockError) {
+            lockError.classList.add('ok-msg');
+            lockError.textContent = 'VERIFYING ACCESS · 正在加密校验...';
+        }
         await tryUnlockAndLoad(val, false);
     });
 
@@ -614,6 +696,115 @@ document.addEventListener("DOMContentLoaded", () => {
     const emptyStageEl = document.getElementById('empty-stage');
     const storageStat = document.getElementById('storage-stat');
     const dropTargetHint = document.getElementById('drop-target-hint');
+    const editorialTitleEl = document.getElementById('editorial-title');
+    const editorialStatSummaryEl = document.getElementById('editorial-stat-summary');
+    const editorialGridBadgeEl = document.getElementById('editorial-grid-badge');
+
+    // 针对存量未生成缩略图的历史大图：一旦浏览器解码成功，后台静默生成 720px WebP 缩略图与 24px LQIP 写回 R2
+    // 让国内后续打开直接享受 <30KB 极速秒开体验
+    const backfilledKeys = new Set();
+    let isBackfilling = false;
+    const backfillQueue = [];
+
+    function createCanvasThumbAndLqip(imgSource) {
+        return new Promise((resolve) => {
+            try {
+                const nw = imgSource.naturalWidth || 1200;
+                const nh = imgSource.naturalHeight || 900;
+
+                // 1. 生成 24px 超轻量模糊占位图 LQIP (~300 bytes)
+                let lw = 24;
+                let lh = Math.max(12, Math.round((nh * 24) / nw));
+                if (nh > nw) {
+                    lh = 24;
+                    lw = Math.max(12, Math.round((nw * 24) / nh));
+                }
+                const lCanvas = document.createElement('canvas');
+                lCanvas.width = lw;
+                lCanvas.height = lh;
+                lCanvas.getContext('2d').drawImage(imgSource, 0, 0, lw, lh);
+                let lqip = '';
+                try {
+                    lqip = lCanvas.toDataURL('image/webp', 0.5);
+                    if (!lqip.startsWith('data:image/webp')) {
+                        lqip = lCanvas.toDataURL('image/jpeg', 0.5);
+                    }
+                } catch {
+                    lqip = '';
+                }
+
+                // 2. 生成 720px 高清极速 WebP 缩略图 (~25KB，专为国内跨洋链路秒开优化)
+                const thumbMax = 720;
+                let tw = nw;
+                let th = nh;
+                if (tw > thumbMax || th > thumbMax) {
+                    if (tw >= th) {
+                        th = Math.round((th * thumbMax) / tw);
+                        tw = thumbMax;
+                    } else {
+                        tw = Math.round((tw * thumbMax) / th);
+                        th = thumbMax;
+                    }
+                }
+                const tCanvas = document.createElement('canvas');
+                tCanvas.width = tw;
+                tCanvas.height = th;
+                tCanvas.getContext('2d').drawImage(imgSource, 0, 0, tw, th);
+                tCanvas.toBlob((thumbBlob) => {
+                    resolve({ thumbBlob, lqip, width: nw, height: nh });
+                }, 'image/webp', 0.78);
+            } catch {
+                resolve({ thumbBlob: null, lqip: '', width: 0, height: 0 });
+            }
+        });
+    }
+
+    async function processBackfillQueue() {
+        if (isBackfilling || backfillQueue.length === 0) return;
+        isBackfilling = true;
+        while (backfillQueue.length > 0) {
+            const { item, imgEl } = backfillQueue.shift();
+            if (!item || !item.key || backfilledKeys.has(item.key)) continue;
+            backfilledKeys.add(item.key);
+            try {
+                const { thumbBlob, lqip, width, height } = await createCanvasThumbAndLqip(imgEl);
+                if (!thumbBlob) continue;
+                const fd = new FormData();
+                fd.append('action', 'backfillThumb');
+                fd.append('key', item.key);
+                fd.append('thumb', new File([thumbBlob], 'thumb.webp', { type: 'image/webp' }));
+                if (lqip) fd.append('lqip', lqip);
+                if (width) fd.append('width', String(width));
+                if (height) fd.append('height', String(height));
+
+                const headers = {};
+                if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+                const res = await fetch('/api/images', { method: 'POST', headers, body: fd });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.ok) {
+                        item.thumbKey = data.thumbKey;
+                        item.thumbUrl = data.thumbUrl;
+                        if (data.lqip) item.lqip = data.lqip;
+                    }
+                }
+            } catch {
+                // 静默忽略后台优化错误，不影响前台浏览
+            }
+            await new Promise(r => setTimeout(r, 700));
+        }
+        isBackfilling = false;
+    }
+
+    function queueBackfillThumb(item, imgEl) {
+        if (!isR2Connected || item.isDemo || !item.key) return;
+        const ext = (item.key.split('.').pop() || '').toLowerCase();
+        if (ext === 'svg' || ext === 'gif') return;
+        if (item.thumbKey && item.lqip) return;
+        if (backfilledKeys.has(item.key)) return;
+        backfillQueue.push({ item, imgEl });
+        setTimeout(processBackfillQueue, 1200);
+    }
 
     function renderFolders() {
         if (!folderTabsEl) return;
@@ -719,8 +910,20 @@ document.addEventListener("DOMContentLoaded", () => {
             return hay.includes(searchQuery);
         });
 
+        const numCols = getColumnCount();
+        const filteredBytes = filteredImages.reduce((acc, item) => acc + (Number(item.size) || 0), 0);
+
         if (storageStat) {
             storageStat.textContent = String(filteredImages.length);
+        }
+        if (editorialTitleEl) {
+            editorialTitleEl.textContent = currentFolder === 'all' ? 'ALL ARCHIVES' : currentFolder.toUpperCase();
+        }
+        if (editorialStatSummaryEl) {
+            editorialStatSummaryEl.textContent = `${filteredImages.length} ${filteredImages.length === 1 ? 'WORK' : 'WORKS'} · ${formatBytes(filteredBytes)}`;
+        }
+        if (editorialGridBadgeEl) {
+            editorialGridBadgeEl.textContent = `${numCols} ${numCols === 1 ? 'COLUMN' : 'COLUMNS'}`;
         }
 
         if (!timelineStreamEl || !emptyStageEl) return;
@@ -747,11 +950,12 @@ document.addEventListener("DOMContentLoaded", () => {
             dayGroups.get(dInfo.key).entries.push({ item, globalFilteredIdx });
         });
 
-        const numCols = getColumnCount();
-
+        let sectionIdx = 0;
         dayGroups.forEach((group) => {
             const section = document.createElement('section');
             section.className = 'timeline-section';
+            section.style.animationDelay = `${Math.min(sectionIdx * 65, 260)}ms`;
+            sectionIdx++;
 
             const dayBytes = group.entries.reduce((acc, e) => acc + (Number(e.item.size) || 0), 0);
 
@@ -817,11 +1021,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 const thumbUrl = getFastThumbUrl(item);
 
                 const aspectStyle = (w > 0 && h > 0) ? `style="aspect-ratio: ${w} / ${h};"` : '';
+                const priorityAttr = globalFilteredIdx < 6 ? 'fetchpriority="high"' : 'loading="lazy"';
 
                 card.innerHTML = `
                     <div class="photo-thumb-wrap" ${aspectStyle}>
                         <button type="button" class="thumb-check" title="勾选">${isSelected ? '✓' : ''}</button>
-                        <img src="${thumbUrl}" alt="${name}" loading="lazy" decoding="async">
+                        <img src="${thumbUrl}" alt="${name}" ${priorityAttr} decoding="async">
+                        <div class="thumb-retry-overlay" hidden><span>加载较慢 · 点击重试</span></div>
                         <button type="button" class="thumb-copy-btn" title="复制原图直链">COPY</button>
                     </div>
                     <div class="photo-caption">
@@ -838,15 +1044,58 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 const thumbWrap = card.querySelector('.photo-thumb-wrap');
                 const imgEl = card.querySelector('img');
+                const retryOverlay = card.querySelector('.thumb-retry-overlay');
                 const infoSpan = card.querySelector('.caption-info');
+                const copyBtn = card.querySelector('.thumb-copy-btn');
+
+                // 若已有 24px 极速模糊占位图 LQIP，立即 0ms 铺底渲染
+                if (item.lqip && thumbWrap) {
+                    thumbWrap.style.backgroundImage = `url(${item.lqip})`;
+                    thumbWrap.style.backgroundSize = 'cover';
+                    thumbWrap.style.backgroundPosition = 'center';
+                }
+
+                let retryCount = 0;
 
                 imgEl.onload = () => {
+                    imgEl.classList.add('is-loaded');
+                    thumbWrap?.classList.add('loaded-wrap');
+                    if (thumbWrap) {
+                        thumbWrap.style.backgroundImage = '';
+                    }
+                    if (retryOverlay) retryOverlay.hidden = true;
+
                     if ((!item.width || !item.height) && imgEl.naturalWidth && imgEl.naturalHeight) {
                         item.width = imgEl.naturalWidth;
                         item.height = imgEl.naturalHeight;
                         if (infoSpan) infoSpan.textContent = `${item.width}×${item.height}`;
                     }
+
+                    // 如果这是历史上传的原图（尚无 720px WebP 缩略图或 LQIP），自动在后台回填至 R2
+                    if (!item.thumbKey || !item.lqip) {
+                        queueBackfillThumb(item, imgEl);
+                    }
                 };
+
+                imgEl.onerror = () => {
+                    if (retryCount < 1) {
+                        retryCount++;
+                        setTimeout(() => {
+                            const sep = thumbUrl.includes('?') ? '&' : '?';
+                            imgEl.src = `${thumbUrl}${sep}_retry=${Date.now()}`;
+                        }, 800);
+                    } else if (retryOverlay) {
+                        retryOverlay.hidden = false;
+                    }
+                };
+
+                retryOverlay?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    retryOverlay.hidden = true;
+                    retryCount = 0;
+                    const sep = thumbUrl.includes('?') ? '&' : '?';
+                    imgEl.src = `${thumbUrl}${sep}_retry=${Date.now()}`;
+                });
 
                 card.querySelector('.cat-badge').addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -859,9 +1108,15 @@ document.addEventListener("DOMContentLoaded", () => {
                     toggleSelection(item.key);
                 });
 
-                card.querySelector('.thumb-copy-btn').addEventListener('click', (e) => {
+                copyBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     copyText(fullUrl, 'URL');
+                    copyBtn.classList.add('copied');
+                    copyBtn.textContent = '✓ COPIED';
+                    setTimeout(() => {
+                        copyBtn.classList.remove('copied');
+                        copyBtn.textContent = 'COPY';
+                    }, 1200);
                 });
 
                 thumbWrap.addEventListener('click', () => {
@@ -1128,25 +1383,97 @@ document.addEventListener("DOMContentLoaded", () => {
         if (files.length) uploadFiles(files);
     });
 
+    // 原生零依赖极速 EXIF 二进制解析器 (<1ms，彻底告别海外 CDN 阻塞)
     async function parseExif(file) {
-        if (!window.exifr) return {};
+        if (!file || !file.type.includes('jpeg')) return {};
         try {
-            const raw = await window.exifr.parse(file, {
-                pick: ['Make', 'Model', 'LensModel', 'FocalLength', 'FNumber', 'ExposureTime', 'ISO']
-            });
-            if (!raw) return {};
-            const camera = [raw.Make, raw.Model].filter(Boolean).join(' ').replace(/^(\S+)\s+\1/i, '$1').trim();
-            const shutter = raw.ExposureTime
-                ? (raw.ExposureTime < 1 ? `1/${Math.round(1 / raw.ExposureTime)}s` : `${raw.ExposureTime}s`)
-                : '';
-            return {
-                camera: camera || '',
-                lens: raw.LensModel || '',
-                focal: raw.FocalLength ? `${Math.round(raw.FocalLength)}mm` : '',
-                aperture: raw.FNumber ? `f/${Number(raw.FNumber).toFixed(1).replace(/\.0$/, '')}` : '',
-                shutter,
-                iso: raw.ISO ? String(raw.ISO) : ''
-            };
+            const slice = file.slice(0, 131072);
+            const buf = await slice.arrayBuffer();
+            const view = new DataView(buf);
+            if (view.byteLength < 12 || view.getUint16(0, false) !== 0xFFD8) return {};
+
+            let offset = 2;
+            while (offset + 4 < view.byteLength) {
+                const marker = view.getUint16(offset, false);
+                offset += 2;
+                if (marker === 0xFFE1) {
+                    const length = view.getUint16(offset, false);
+                    if (offset + 8 >= view.byteLength) break;
+                    // "Exif\0\0"
+                    if (view.getUint32(offset + 2, false) !== 0x45786966) {
+                        offset += length;
+                        continue;
+                    }
+                    const tiffStart = offset + 8;
+                    const little = view.getUint16(tiffStart, false) === 0x4949;
+                    const firstIfd = view.getUint32(tiffStart + 4, little);
+                    const tags = {};
+
+                    const readString = (start, count) => {
+                        let s = '';
+                        for (let i = 0; i < count - 1 && start + i < view.byteLength; i++) {
+                            const ch = view.getUint8(start + i);
+                            if (ch === 0) break;
+                            s += String.fromCharCode(ch);
+                        }
+                        return s.trim();
+                    };
+
+                    const readRational = (start) => {
+                        if (start + 8 > view.byteLength) return 0;
+                        const num = view.getUint32(start, little);
+                        const den = view.getUint32(start + 4, little);
+                        return den ? num / den : 0;
+                    };
+
+                    const parseIfd = (ifdOffset) => {
+                        const dirStart = tiffStart + ifdOffset;
+                        if (dirStart + 2 > view.byteLength) return;
+                        const entries = view.getUint16(dirStart, little);
+                        for (let i = 0; i < entries; i++) {
+                            const entry = dirStart + 2 + i * 12;
+                            if (entry + 12 > view.byteLength) break;
+                            const tag = view.getUint16(entry, little);
+                            const type = view.getUint16(entry + 2, little);
+                            const count = view.getUint32(entry + 4, little);
+                            const valOffset = tiffStart + view.getUint32(entry + 8, little);
+
+                            if (tag === 0x8769) {
+                                parseIfd(view.getUint32(entry + 8, little));
+                            } else if ((tag === 0x010F || tag === 0x0110 || tag === 0xA434) && type === 2) {
+                                const strPos = count <= 4 ? entry + 8 : valOffset;
+                                tags[tag] = readString(strPos, count);
+                            } else if ((tag === 0x829A || tag === 0x829D || tag === 0x920A) && type === 5) {
+                                tags[tag] = readRational(valOffset);
+                            } else if (tag === 0x8827) {
+                                tags[tag] = type === 3 ? view.getUint16(entry + 8, little) : view.getUint32(entry + 8, little);
+                            }
+                        }
+                    };
+
+                    parseIfd(firstIfd);
+
+                    const make = tags[0x010F] || '';
+                    const model = tags[0x0110] || '';
+                    const camera = [make, model].filter(Boolean).join(' ').replace(/^(\S+)\s+\1/i, '$1').trim();
+                    const exp = tags[0x829A];
+                    const shutter = exp ? (exp < 1 ? `1/${Math.round(1 / exp)}s` : `${exp}s`) : '';
+
+                    return {
+                        camera,
+                        lens: tags[0xA434] || '',
+                        focal: tags[0x920A] ? `${Math.round(tags[0x920A])}mm` : '',
+                        aperture: tags[0x829D] ? `f/${Number(tags[0x829D]).toFixed(1).replace(/\.0$/, '')}` : '',
+                        shutter,
+                        iso: tags[0x8827] ? String(tags[0x8827]) : ''
+                    };
+                } else if ((marker & 0xFF00) !== 0xFF00) {
+                    break;
+                } else {
+                    offset += view.getUint16(offset, false);
+                }
+            }
+            return {};
         } catch {
             return {};
         }
@@ -1164,30 +1491,17 @@ document.addEventListener("DOMContentLoaded", () => {
         let width = img.naturalWidth || 1920;
         let height = img.naturalHeight || 1080;
 
-        // 生成 1080px 高清轻量 WebP 预览图 (~45KB)，既清晰又能让列表和弹窗做到 <16ms 零卡顿
+        // 生成 720px 高清极速 WebP 缩略图 (~25KB，专为国内跨洋链路秒开优化) + 24px 0ms 瞬时模糊图 LQIP (~300B)
         let thumbBlob = null;
+        let lqip = '';
         if (file.type !== 'image/svg+xml' && file.type !== 'image/gif') {
-            const thumbMax = 1080;
-            let tw = width;
-            let th = height;
-            if (tw > thumbMax || th > thumbMax) {
-                if (tw >= th) {
-                    th = Math.round((th * thumbMax) / tw);
-                    tw = thumbMax;
-                } else {
-                    tw = Math.round((tw * thumbMax) / th);
-                    th = thumbMax;
-                }
-            }
-            const tCanvas = document.createElement('canvas');
-            tCanvas.width = tw;
-            tCanvas.height = th;
-            tCanvas.getContext('2d').drawImage(img, 0, 0, tw, th);
-            thumbBlob = await new Promise(r => tCanvas.toBlob(r, 'image/webp', 0.82));
+            const generated = await createCanvasThumbAndLqip(img);
+            thumbBlob = generated.thumbBlob;
+            lqip = generated.lqip;
         }
 
         if (uploadMode === 'original' || file.type === 'image/svg+xml' || file.type === 'image/gif') {
-            return { file, thumbBlob, width, height };
+            return { file, thumbBlob, lqip, width, height };
         }
 
         const maxEdge = uploadMode === 'webp-2k' ? 2560 : 3840;
@@ -1209,7 +1523,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const blob = await new Promise(r => canvas.toBlob(r, 'image/webp', 0.88));
         const baseName = file.name.replace(/\.[^/.]+$/, '');
         const out = new File([blob], `${baseName}.webp`, { type: 'image/webp' });
-        return { file: out, thumbBlob, width, height };
+        return { file: out, thumbBlob, lqip, width, height };
     }
 
     async function uploadFiles(files) {
@@ -1226,7 +1540,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (ribbonPercent) ribbonPercent.textContent = `${pct}%`;
 
             try {
-                const [exif, { file, thumbBlob, width, height }] = await Promise.all([
+                const [exif, { file, thumbBlob, lqip, width, height }] = await Promise.all([
                     parseExif(rawFile),
                     prepareImageAndThumbnail(rawFile)
                 ]);
@@ -1238,6 +1552,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     fd.append('file', file);
                     if (thumbBlob) {
                         fd.append('thumb', new File([thumbBlob], 'thumb.webp', { type: 'image/webp' }));
+                    }
+                    if (lqip) {
+                        fd.append('lqip', lqip);
                     }
                     fd.append('folder', targetFolder);
                     fd.append('customName', rawFile.name.replace(/\.[^/.]+$/, ''));
@@ -1265,6 +1582,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         key: `${targetFolder}/${Date.now()}-${file.name}`,
                         url: dataUrl,
                         thumbUrl: dataUrl,
+                        lqip,
                         size: file.size,
                         uploaded: new Date().toISOString(),
                         folder: targetFolder,

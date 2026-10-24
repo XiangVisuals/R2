@@ -203,6 +203,7 @@ function formatR2Object(obj, request, env) {
     url: fullUrl,
     thumbUrl,
     thumbKey: meta.thumbKey || "",
+    lqip: meta.lqip || "",
     size: obj.size,
     uploaded: obj.uploaded ? new Date(obj.uploaded).toISOString() : new Date().toISOString(),
     etag: obj.httpEtag,
@@ -328,6 +329,56 @@ export async function onRequestPost(context) {
 
   try {
     const formData = await request.formData();
+    const action = (formData.get("action") || "").toString();
+
+    // Auto-backfill thumbnail + LQIP for existing large R2 images
+    if (action === "backfillThumb") {
+      const targetKey = (formData.get("key") || "").toString();
+      const thumbFile = formData.get("thumb");
+      const lqip = (formData.get("lqip") || "").toString().slice(0, 750);
+      const width = (formData.get("width") || "").toString();
+      const height = (formData.get("height") || "").toString();
+
+      if (!targetKey || !thumbFile || typeof thumbFile === "string") {
+        return jsonResponse({ ok: false, error: "Missing key or thumb" }, 400);
+      }
+
+      const existing = await bucket.get(targetKey);
+      if (!existing) {
+        return jsonResponse({ ok: false, error: "Target object not found" }, 404);
+      }
+
+      const baseNoExt = targetKey.replace(/\.[^/.]+$/, "");
+      const thumbKey = `.thumbs/${baseNoExt}.webp`;
+      const thumbBuf = await thumbFile.arrayBuffer();
+      await bucket.put(thumbKey, thumbBuf, {
+        httpMetadata: {
+          contentType: "image/webp",
+          cacheControl: "public, max-age=31536000, immutable",
+        },
+      });
+
+      const updatedMeta = {
+        ...(existing.customMetadata || {}),
+        thumbKey,
+      };
+      if (lqip) updatedMeta.lqip = lqip;
+      if (width && width !== "0") updatedMeta.width = width;
+      if (height && height !== "0") updatedMeta.height = height;
+
+      await bucket.put(targetKey, existing.body, {
+        httpMetadata: existing.httpMetadata,
+        customMetadata: updatedMeta,
+      });
+
+      return jsonResponse({
+        ok: true,
+        thumbKey,
+        thumbUrl: buildPublicUrl(thumbKey, request, env),
+        lqip,
+      });
+    }
+
     const file = formData.get("file");
     const thumbFile = formData.get("thumb");
 
@@ -384,6 +435,7 @@ export async function onRequestPost(context) {
     const height = (formData.get("height") || "0").toString();
     const title = (formData.get("title") || originalName.replace(/\.[^/.]+$/, "")).toString().slice(0, 120);
     const exifRaw = (formData.get("exif") || "{}").toString().slice(0, 1500);
+    const lqip = (formData.get("lqip") || "").toString().slice(0, 750);
 
     const customMetadata = {
       folder: rawFolder,
@@ -394,6 +446,7 @@ export async function onRequestPost(context) {
       mime: mimeType,
       exif: exifRaw,
       thumbKey,
+      lqip,
       uploadedAt: now.toISOString(),
     };
 

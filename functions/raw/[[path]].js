@@ -39,11 +39,20 @@ export async function onRequestGet(context) {
   }
 
   const cacheUrl = new URL(request.url);
-  const cacheKey = new Request(cacheUrl.toString(), request);
+  // Normalize cache key (strip transient retry params)
+  cacheUrl.searchParams.delete("_retry");
+  const cacheKey = new Request(cacheUrl.toString(), {
+    method: "GET",
+  });
   const cache = caches.default;
 
   let response = await cache.match(cacheKey);
   if (response) {
+    const ifNoneMatch = request.headers.get("if-none-match");
+    const cachedEtag = response.headers.get("etag");
+    if (ifNoneMatch && cachedEtag && ifNoneMatch === cachedEtag) {
+      return new Response(null, { status: 304, headers: response.headers });
+    }
     return response;
   }
 
@@ -62,7 +71,12 @@ export async function onRequestGet(context) {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set("etag", object.httpEtag);
-  headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  // Aggressive Cloudflare CDN + Browser caching for instant repeat loads in China
+  headers.set(
+    "Cache-Control",
+    "public, max-age=31536000, s-maxage=31536000, stale-while-revalidate=86400, immutable"
+  );
+  headers.set("CDN-Cache-Control", "public, max-age=31536000, immutable");
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
   headers.set("Timing-Allow-Origin", "*");
