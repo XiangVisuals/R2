@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="color-scheme" content="light dark">
+    <title>IMG</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='5' fill='%230f172a'/%3E%3Cpath d='M6 23l6.5-7.5 4.5 5 4-4.5 5 7H6z' fill='%23ffffff' opacity='0.94'/%3E%3Ccircle cx='11' cy='11' r='2.2' fill='%23ffffff'/%3E%3C/svg%3E" type="image/svg+xml">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="locked hdr-enabled">
+
+    <!-- 扁平化柔光环境底幕 (默认极简云白，支持一键切换深邃暗夜) -->
+    <div class="ambient-canvas" aria-hidden="true">
+        <div class="ambient-orb orb-1"></div>
+        <div class="ambient-orb orb-2"></div>
+        <div class="ambient-orb orb-3"></div>
+        <div class="glass-noise"></div>
+    </div>
+
+    <!-- =========================================================
+         0-A. 网站启动极简流体光学序幕 (Minimalist Optical Aperture Preloader)
+    ========================================================= -->
+    <div id="site-loader" class="site-loader">
+        <div class="loader-stage">
+            <div class="loader-medallion">
+                <svg class="loader-orbital-svg" viewBox="0 0 88 88" aria-hidden="true">
+                    <circle class="loader-ring-base" cx="44" cy="44" r="38" />
+                    <circle class="loader-ring-orbit outer" cx="44" cy="44" r="38" />
+                    <circle class="loader-ring-orbit inner" cx="44" cy="44" r="29" />
+                </svg>
+                <div class="loader-core-badge">
+                    <span class="loader-logo-text">IMG</span>
+                    <span class="loader-core-dot"></span>
+                </div>
+            </div>
+            <div class="loader-meta-group">
+                <div class="loader-bar-wrap">
+                    <div class="loader-bar-fill" id="site-loader-bar"></div>
+                </div>
+                <div class="loader-status-row">
+                    <span class="loader-status-text" id="site-loader-text">OPTICAL ENGINE</span>
+                    <span class="loader-hdr-tag">HDR P3</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         0-B. 极简流体光环门禁：光学灵眸 ⇄ 灵动密码韵律点阵
+    ========================================================= -->
+    <div id="lock-screen" class="lock-screen">
+        <div class="lock-glass-card" id="lock-box">
+            <div class="lock-card-aura" id="lock-card-aura" aria-hidden="true"></div>
+
+            <!-- 极简光学灵眸与流体光环舞台 -->
+            <div class="lock-emblem-stage" id="lock-emblem-stage">
+                <div class="lock-halo-wrap" id="lock-mark">
+                    <!-- 外围流体光环与按键涟漪波 -->
+                    <svg class="lock-halo-svg" viewBox="0 0 96 96" aria-hidden="true">
+                        <circle class="iris-track" cx="48" cy="48" r="42" />
+                        <circle class="iris-ambient" cx="48" cy="48" r="35" />
+                        <circle class="iris-progress" id="lock-iris-progress" cx="48" cy="48" r="42" pathLength="100" />
+                    </svg>
+                    <span class="lock-ripple-ring" id="lock-ripple-ring" aria-hidden="true"></span>
+
+                    <!-- 中心悬浮毛玻璃锁芯徽章 -->
+                    <div class="lock-core-medallion">
+                        <svg class="lock-glyph-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path class="lock-shackle" d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" />
+                            <rect class="lock-body" x="5.5" y="10" width="13" height="10" rx="3.2" stroke="currentColor" stroke-width="1.65" />
+                            <circle class="lock-keyhole" cx="12" cy="15" r="1.35" fill="currentColor" />
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="lock-brand-caption">
+                    <span class="lock-brand-title">IMG</span>
+                    <span class="lock-brand-sep"></span>
+                    <span class="lock-brand-sub">SPACE</span>
+                </div>
+
+                <!-- 灵动密码韵律珠轨：随每次输入产生弹性光珠与波浪共振 -->
+                <div class="lock-rhythm-stage" id="lock-rhythm-stage" aria-hidden="true">
+                    <div class="lock-rhythm-dots" id="lock-rhythm-dots">
+                        <span class="rhythm-guide-dot"></span>
+                        <span class="rhythm-guide-dot"></span>
+                        <span class="rhythm-guide-dot"></span>
+                        <span class="rhythm-guide-dot"></span>
+                    </div>
+                </div>
+            </div>
+
+            <form id="lock-form" class="lock-form" autocomplete="off">
+                <div class="lock-input-group" id="lock-input-group">
+                    <input type="password" id="lock-password-input" class="lock-input" placeholder="输入访问密码" autofocus>
+                    <button type="button" id="lock-toggle-vis" class="lock-vis-btn" title="显示/隐藏" aria-label="显示密码">
+                        <svg class="eye-open" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/>
+                            <circle cx="12" cy="12" r="2.8"/>
+                        </svg>
+                        <svg class="eye-closed" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
+                            <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c6.5 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
+                            <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3.5 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
+                            <line x1="2" y1="2" x2="22" y2="22"/>
+                        </svg>
+                    </button>
+                    <button type="submit" id="lock-submit-btn" class="lock-submit" aria-label="进入">
+                        <svg class="submit-arrow" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                            <polyline points="12 5 19 12 12 19"></polyline>
+                        </svg>
+                        <span class="submit-spinner"></span>
+                    </button>
+                    <span class="input-laser-line" id="lock-input-laser"></span>
+                </div>
+                <div class="lock-error" id="lock-error"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 全局文件选择器 (完整支持主流 HDR 格式：Ultra HDR JPEG, Apple HEIC/HEIF, 10-bit AVIF, JXL, 16-bit PNG/TIFF, DNG/RAW) -->
+    <input type="file" id="file-input" multiple accept="image/*,.heic,.heif,.hif,.avif,.jxl,.tif,.tiff,.dng,.cr2,.cr3,.arw,.nef,.raf,.orf,.rw2,.hdr,.exr" hidden>
+
+    <!-- 拖拽上传毛玻璃遮罩 -->
+    <div id="drop-overlay" class="drop-overlay" aria-hidden="true">
+        <div class="drop-glass-card">
+            <span class="drop-plus">+</span>
+            <p class="drop-title" id="drop-target-hint">松开上传图片 (支持 HDR / HEIC / AVIF / RAW)</p>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         1. 顶部扁平化毛玻璃导航栏 (Flat Frosted Glass Command Bar)
+    ========================================================= -->
+    <header class="top-glass-header" id="top-bar">
+        <div class="glass-dock">
+            <!-- 左侧：矩形 IMG 标志 + 计数 -->
+            <div class="dock-brand-group">
+                <a href="/" class="brand" aria-label="IMG">
+                    <span class="brand-name">IMG</span>
+                    <span class="brand-count" id="storage-stat">0</span>
+                </a>
+            </div>
+
+            <!-- 中间：扁平毛玻璃分类导航轨 + 新建分类按钮 -->
+            <div class="dock-categories-group">
+                <nav class="folder-tabs" id="folder-tabs" aria-label="分类">
+                    <button class="tab-item active" data-folder="all">全部</button>
+                </nav>
+                <button type="button" class="dock-cat-add" id="btn-new-folder" title="分类管理">+</button>
+            </div>
+
+            <!-- 右侧：搜索 + 缩放 + HDR + 浅色/深色切换 + 容量 + 操作 -->
+            <div class="dock-tools-group">
+                <div class="search-wrap">
+                    <svg class="search-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <line x1="20" y1="20" x2="16.2" y2="16.2"></line>
+                    </svg>
+                    <input type="text" id="search-input" class="search-input" placeholder="搜索" autocomplete="off">
+                    <button type="button" id="search-clear-btn" class="search-clear-btn" hidden>✕</button>
+                </div>
+
+                <div class="zoom-scaler" title="列数缩放">
+                    <button type="button" class="zoom-step-btn" id="btn-zoom-out">−</button>
+                    <input type="range" id="zoom-slider" class="zoom-slider" min="1" max="5" step="1" value="3">
+                    <button type="button" class="zoom-step-btn" id="btn-zoom-in">+</button>
+                </div>
+
+                <!-- HDR 广色域高动态范围开关 -->
+                <button type="button" class="hdr-pill active" id="btn-hdr-toggle" title="HDR 广色域高光渲染与原图直出">HDR</button>
+
+                <!-- 极简白 / 深色模式一键切换 -->
+                <button type="button" class="glass-icon-btn" id="btn-theme-toggle" title="切换浅色 / 深色模式" aria-label="切换主题">
+                    <svg class="icon-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                    <svg class="icon-sun" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75">
+                        <circle cx="12" cy="12" r="4"></circle>
+                        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+                    </svg>
+                </button>
+
+                <button type="button" class="quota-pill" id="btn-quota-detail" title="存储空间">
+                    <span class="quota-used" id="quota-pill-text">0 MB</span>
+                    <div class="quota-mini-track">
+                        <div class="quota-mini-fill" id="quota-mini-fill"></div>
+                    </div>
+                </button>
+
+                <button type="button" class="glass-btn" id="btn-batch-toggle" title="多选 (B)">多选</button>
+                <button type="button" class="glass-btn primary" id="btn-upload" title="上传图片 (支持 HDR)">上传</button>
+                <button type="button" class="glass-icon-btn" id="btn-settings" title="设置" aria-label="设置">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 顶部毛玻璃上传进度条 -->
+    <div class="upload-ribbon" id="upload-ribbon" hidden>
+        <div class="ribbon-track">
+            <div class="ribbon-bar" id="ribbon-bar"></div>
+        </div>
+        <div class="ribbon-info">
+            <span id="ribbon-text">上传中...</span>
+            <span id="ribbon-percent">0%</span>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         2. 主画廊：扁平化毛玻璃卡片瀑布流
+    ========================================================= -->
+    <main class="space-main" id="space-main">
+        <!-- 骨架屏 -->
+        <div class="skeleton-stage" id="skeleton-stage" hidden>
+            <div class="skeleton-grid">
+                <div class="skeleton-card" style="aspect-ratio: 3/2;"></div>
+                <div class="skeleton-card" style="aspect-ratio: 4/5;"></div>
+                <div class="skeleton-card" style="aspect-ratio: 16/10;"></div>
+                <div class="skeleton-card" style="aspect-ratio: 1/1;"></div>
+            </div>
+        </div>
+
+        <!-- 空状态 -->
+        <div class="empty-stage" id="empty-stage" hidden>
+            <div class="empty-glass-box" id="empty-drop-trigger">
+                <span class="empty-plus">+</span>
+                <p class="empty-title">点击或拖拽上传 (支持 HDR / HEIC / AVIF)</p>
+            </div>
+        </div>
+
+        <!-- 时间线瀑布流 -->
+        <div class="timeline-stream" id="timeline-stream"></div>
+    </main>
+
+    <!-- 单张卡片快捷切换分类毛玻璃菜单 -->
+    <div id="quick-cat-popover" class="quick-cat-popover" hidden>
+        <div class="popover-list" id="quick-cat-list"></div>
+        <button type="button" class="popover-new-btn" id="quick-cat-new-btn">+ 新建分类</button>
+    </div>
+
+    <!-- =========================================================
+         3. 移动端底部悬浮灵动岛毛玻璃栏
+    ========================================================= -->
+    <nav class="mobile-bottom-bar" id="mobile-bottom-bar" aria-label="快捷栏">
+        <div class="mob-zoom-group" title="缩放列数">
+            <button type="button" class="mob-zoom-btn" id="mob-zoom-out" aria-label="增加列数">−</button>
+            <button type="button" class="mob-zoom-label" id="mob-zoom-label" title="点击切换列数">2列</button>
+            <button type="button" class="mob-zoom-btn" id="mob-zoom-in" aria-label="减少列数">+</button>
+        </div>
+
+        <button type="button" class="mob-upload-fab" id="mob-btn-upload">
+            <span class="mob-upload-plus">+</span>
+            <span>上传</span>
+        </button>
+
+        <div class="mob-right-group">
+            <button type="button" class="mob-tool-btn" id="mob-btn-cat">分类</button>
+            <button type="button" class="mob-tool-btn" id="mob-btn-batch">多选</button>
+            <button type="button" class="mob-tool-btn" id="mob-btn-settings" aria-label="设置">设置</button>
+        </div>
+    </nav>
+
+    <!-- =========================================================
+         4. 底部悬浮毛玻璃批量栏
+    ========================================================= -->
+    <div class="selection-dock" id="selection-dock" hidden>
+        <div class="dock-left">
+            <span class="sel-count" id="sel-count">已选 0</span>
+            <button type="button" class="dock-link" id="btn-sel-all">全选</button>
+            <button type="button" class="dock-link" id="btn-sel-invert">反选</button>
+        </div>
+
+        <span class="sel-sep"></span>
+
+        <div class="dock-center">
+            <select id="batch-move-select" class="dock-select">
+                <option value="">移动至...</option>
+            </select>
+            <button type="button" class="dock-action" id="btn-sel-copy-url">直链</button>
+            <button type="button" class="dock-action" id="btn-sel-copy-md">MD</button>
+            <button type="button" class="dock-action" id="btn-sel-download">下载</button>
+            <button type="button" class="dock-action danger" id="btn-sel-delete">删除</button>
+        </div>
+
+        <button type="button" class="dock-close" id="btn-sel-clear" aria-label="退出多选">✕</button>
+    </div>
+
+    <!-- =========================================================
+         5. HDR 扁平毛玻璃大图检视层 (HDR Flat Glass Viewer)
+    ========================================================= -->
+    <div class="viewer-backdrop" id="viewer-modal" aria-hidden="true">
+        <div class="viewer-layout">
+            <div class="viewer-stage" id="viewer-stage">
+                <!-- HDR 动态环境光背投层 -->
+                <img id="viewer-ambilight" class="viewer-ambilight" alt="" aria-hidden="true">
+                <div class="viewer-top-badges">
+                    <span class="viewer-counter-pill" id="viewer-counter">1 / 1</span>
+                    <span class="viewer-hdr-badge" id="viewer-hdr-indicator">HDR P3</span>
+                    <button type="button" class="hd-badge-btn" id="btn-load-hd" hidden>加载原图</button>
+                </div>
+                <button type="button" class="mobile-viewer-close" id="mobile-viewer-close" aria-label="关闭">✕</button>
+                <button class="nav-arrow prev" id="viewer-prev" aria-label="上一张">‹</button>
+                <img id="viewer-img" class="viewer-img" alt="">
+                <button class="nav-arrow next" id="viewer-next" aria-label="下一张">›</button>
+            </div>
+
+            <aside class="viewer-sidebar">
+                <div class="viewer-sheet-handle" aria-hidden="true"></div>
+                <div class="sidebar-top">
+                    <div class="file-header">
+                        <input type="text" id="meta-title-input" class="title-input" placeholder="标题">
+                        <button class="viewer-close" id="viewer-close">✕</button>
+                    </div>
+
+                    <div class="file-quick-stats" id="meta-quick-stats">
+                        <span id="stat-dimensions">—</span>
+                        <span>·</span>
+                        <span id="stat-size">—</span>
+                        <span>·</span>
+                        <span id="stat-date">—</span>
+                    </div>
+
+                    <div class="meta-row-field">
+                        <label class="field-label">分类</label>
+                        <div class="folder-edit-group">
+                            <span class="folder-color-preview" id="viewer-folder-dot"></span>
+                            <input type="text" id="meta-folder-input" class="minimal-input" placeholder="分类">
+                            <button type="button" id="btn-save-meta" class="minimal-save-btn">保存</button>
+                        </div>
+                        <div class="viewer-cat-chips" id="viewer-cat-chips"></div>
+                    </div>
+
+                    <div class="links-block">
+                        <label class="field-label">外链</label>
+                        <button type="button" class="copy-line" data-format="url">
+                            <span class="copy-tag">URL</span>
+                            <span class="copy-val" id="val-url"></span>
+                        </button>
+                        <button type="button" class="copy-line" data-format="md">
+                            <span class="copy-tag">MD</span>
+                            <span class="copy-val" id="val-md"></span>
+                        </button>
+                        <button type="button" class="copy-line" data-format="html">
+                            <span class="copy-tag">HTML</span>
+                            <span class="copy-val" id="val-html"></span>
+                        </button>
+                    </div>
+
+                    <div class="exif-block" id="exif-block">
+                        <label class="field-label">EXIF / HDR</label>
+                        <div class="exif-list" id="exif-list"></div>
+                    </div>
+                </div>
+
+                <div class="sidebar-bottom">
+                    <a id="btn-download" href="#" download target="_blank" class="bottom-action">下载</a>
+                    <button type="button" id="btn-delete-single" class="bottom-action danger">删除</button>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         6. 分类管理毛玻璃弹窗
+    ========================================================= -->
+    <div class="settings-backdrop" id="category-modal" aria-hidden="true">
+        <div class="settings-card">
+            <div class="settings-head">
+                <span class="settings-title">分类</span>
+                <button class="viewer-close" id="category-modal-close">✕</button>
+            </div>
+
+            <form id="form-create-category" class="cat-create-box" autocomplete="off">
+                <div class="cat-create-row">
+                    <span class="cat-selected-color-dot" id="new-cat-color-preview"></span>
+                    <input type="text" id="input-new-cat-name" class="minimal-input" placeholder="新建分类名称" maxlength="32">
+                    <button type="submit" class="minimal-save-btn primary-create-btn">添加</button>
+                </div>
+                <div class="cat-palette-row" id="new-cat-palette"></div>
+            </form>
+
+            <div class="cat-manage-section">
+                <div class="cat-manage-list" id="cat-manage-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         7. 设置与空间毛玻璃弹窗
+    ========================================================= -->
+    <div class="settings-backdrop" id="settings-modal" aria-hidden="true">
+        <div class="settings-card">
+            <div class="settings-head">
+                <span class="settings-title">设置</span>
+                <button class="viewer-close" id="settings-close">✕</button>
+            </div>
+
+            <div class="storage-meter-box">
+                <div class="meter-header">
+                    <span>存储空间 (10 GB)</span>
+                    <span class="meter-pct" id="meter-pct">0%</span>
+                </div>
+                <div class="meter-bar-multi" id="meter-bar-multi"></div>
+                <div class="meter-stats-row">
+                    <span>已用 <strong id="meter-used-val">0 MB</strong></span>
+                    <span>可用 <strong id="meter-free-val">10 GB</strong></span>
+                </div>
+                <div class="meter-cat-breakdown" id="meter-cat-breakdown"></div>
+            </div>
+
+            <div class="storage-meter-box china-accel-box">
+                <div class="china-accel-row">
+                    <div>
+                        <div class="meter-label-strong">国内加载加速</div>
+                        <span class="china-accel-desc" id="thumb-accel-status">极速缩略图检测中</span>
+                    </div>
+                    <button type="button" class="minimal-save-btn" id="btn-optimize-all-thumbs">一键生成缩略图</button>
+                </div>
+                <select id="select-china-cdn-mode" class="minimal-input">
+                    <option value="smart-queue">智能队列 + R2 缩略图 + 本地缓存（默认）</option>
+                    <option value="wsrv-cdn">全球边缘网关压缩加速 (wsrv.nl)</option>
+                </select>
+            </div>
+
+            <div class="settings-field">
+                <label class="field-label">上传策略 (HDR 照片自动无损保留)</label>
+                <select id="select-upload-mode" class="minimal-input">
+                    <option value="original">无损原图（完整保留 Apple / ISO HDR 增益图）</option>
+                    <option value="webp-4k">WebP · 4K（HDR 照片仍自动保留原图）</option>
+                    <option value="webp-2k">WebP · 2.5K（HDR 照片仍自动保留原图）</option>
+                </select>
+            </div>
+
+            <div class="settings-field">
+                <label class="field-label">自定义域名</label>
+                <input type="text" id="input-custom-domain" class="minimal-input" placeholder="https://...">
+            </div>
+
+            <div class="settings-field">
+                <label class="field-label">修改密码</label>
+                <input type="password" id="input-new-password" class="minimal-input" placeholder="留空不修改" autocomplete="new-password">
+            </div>
+
+            <div class="settings-foot">
+                <button type="button" class="bottom-action danger" id="btn-lock-now">锁定</button>
+                <button type="button" class="bottom-action primary" id="btn-save-settings">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-box" class="toast-box"></div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

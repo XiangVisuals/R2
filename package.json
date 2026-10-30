@@ -1,0 +1,10 @@
+{
+  "name": "xiang-r2-space",
+  "version": "1.0.0",
+  "private": true,
+  "description": "XIANG — Minimalist Personal Image Space powered by Cloudflare R2",
+  "scripts": {
+    "build": "echo 'Static assets ready in public/'",
+    "dev": "npx wrangler pages dev public --r2 BUCKET --binding ADMIN_PASSWORD=admin"
+  }
+}
