@@ -2846,7 +2846,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const metaLocationInput = document.getElementById('meta-location-input');
         if (metaLocationInput) {
             const hasCoords = typeof item.exif?.lat === 'number' && typeof item.exif?.lng === 'number';
-            metaLocationInput.value = hasCoords ? `${item.exif.lat}, ${item.exif.lng}` : '';
+            metaLocationInput.value = hasCoords ? `${item.exif.lng},${item.exif.lat}` : '';
         }
         renderViewerCategoryChips(item);
 
@@ -3481,11 +3481,11 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             const parts = raw.split(/[\s,，]+/).map(Number);
             if (parts.length < 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1]) ||
-                Math.abs(parts[0]) > 90 || Math.abs(parts[1]) > 180) {
-                toast('请输入有效坐标，如: 37.7544, -122.4477');
+                Math.abs(parts[0]) > 180 || Math.abs(parts[1]) > 90) {
+                toast('请输入有效坐标(经度,纬度)，如: 121.577995,38.893074');
                 return;
             }
-            exifPatch = { lat: Number(parts[0].toFixed(6)), lng: Number(parts[1].toFixed(6)) };
+            exifPatch = { lng: Number(parts[0].toFixed(6)), lat: Number(parts[1].toFixed(6)) };
         }
 
         item.exif = { ...(item.exif || {}), ...exifPatch };
