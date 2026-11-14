@@ -62,8 +62,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let uploadMode = localStorage.getItem(STORAGE_KEYS.UPLOAD_MODE) || 'original';
     let chinaCdnMode = localStorage.getItem(STORAGE_KEYS.CHINA_CDN_MODE) || 'smart-queue';
     let isHdrEnabled = localStorage.getItem(STORAGE_KEYS.HDR_MODE) !== '0';
-    // 默认极简纯白浅色模式 ('light')，支持一键切换深色模式 ('dark')
-    let isDarkMode = localStorage.getItem(STORAGE_KEYS.THEME) === 'dark';
+    // 默认极简画廊深色模式 ('dark')，支持一键切换极简浅色模式 ('light')
+    let isDarkMode = localStorage.getItem(STORAGE_KEYS.THEME) !== 'light';
 
     const btnHdrToggle = document.getElementById('btn-hdr-toggle');
     const btnThemeToggle = document.getElementById('btn-theme-toggle');
@@ -72,6 +72,8 @@ document.addEventListener("DOMContentLoaded", () => {
     function syncHdrModeUI() {
         document.body.classList.toggle('hdr-enabled', isHdrEnabled);
         btnHdrToggle?.classList.toggle('active', isHdrEnabled);
+        const stateEl = btnHdrToggle?.querySelector('.rail-action-state');
+        if (stateEl) stateEl.textContent = isHdrEnabled ? 'ON' : 'OFF';
     }
 
     function syncThemeUI() {
@@ -98,14 +100,15 @@ document.addEventListener("DOMContentLoaded", () => {
         isDarkMode = !isDarkMode;
         localStorage.setItem(STORAGE_KEYS.THEME, isDarkMode ? 'dark' : 'light');
         syncThemeUI();
+        if (typeof updateMapBasemap === 'function') updateMapBasemap();
         toast(isDarkMode ? '已切换至深色模式' : '已切换至极简浅色模式');
     }
 
     btnThemeToggle?.addEventListener('click', toggleThemeMode);
     mobBtnTheme?.addEventListener('click', toggleThemeMode);
 
-    // 缩略图档位：桌面端 1..5 (对应 7, 5, 4, 3, 2 列)，手机端 1..4 (对应 5, 3, 2, 1 列)
-    let desktopZoomLevel = Math.min(5, Math.max(1, parseInt(localStorage.getItem(STORAGE_KEYS.ZOOM_DESKTOP) || '3', 10)));
+    // 缩略图档位：桌面端 1..6 (对应 6, 5, 4, 3, 2, 1 列)，手机端 1..4 (对应 4, 3, 2, 1 列)
+    let desktopZoomLevel = Math.min(6, Math.max(1, parseInt(localStorage.getItem(STORAGE_KEYS.ZOOM_DESKTOP) || '5', 10)));
     let mobileZoomLevel = Math.min(4, Math.max(1, parseInt(localStorage.getItem(STORAGE_KEYS.ZOOM_MOBILE) || '3', 10)));
 
     let isR2Connected = false;
@@ -595,12 +598,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!lockRhythmDots) return;
         if (charLen <= 0) {
             lockRhythmDots.classList.remove('dense-pearls');
-            lockRhythmDots.innerHTML = `
-                <span class="rhythm-guide-dot"></span>
-                <span class="rhythm-guide-dot"></span>
-                <span class="rhythm-guide-dot"></span>
-                <span class="rhythm-guide-dot"></span>
-            `;
+            lockRhythmDots.innerHTML = Array.from({ length: 8 }, () => '<span class="rhythm-guide-dot"></span>').join('');
             return;
         }
 
@@ -948,15 +946,33 @@ document.addEventListener("DOMContentLoaded", () => {
     /* =========================================================
        4. 缩略图尺寸无级调节器 (Thumbnail Zoom Scaler)
     ========================================================= */
-    const DESKTOP_COLS_MAP = { 1: 7, 2: 5, 3: 4, 4: 3, 5: 2 };
-    const MOBILE_COLS_MAP = { 1: 5, 2: 3, 3: 2, 4: 1 };
+    const DESKTOP_COLS_MAP = { 1: 6, 2: 5, 3: 4, 4: 3, 5: 2, 6: 1 };
+    const MOBILE_COLS_MAP = { 1: 4, 2: 3, 3: 2, 4: 1 };
 
     const zoomSlider = document.getElementById('zoom-slider');
     const btnZoomOut = document.getElementById('btn-zoom-out');
     const btnZoomIn = document.getElementById('btn-zoom-in');
+    const btnStreamToggle = document.getElementById('btn-stream-toggle');
     const mobZoomOut = document.getElementById('mob-zoom-out');
     const mobZoomIn = document.getElementById('mob-zoom-in');
     const mobZoomLabel = document.getElementById('mob-zoom-label');
+
+    /* 移动端 / 平板端侧边目录抽屉控制 */
+    const btnMobileDrawer = document.getElementById('btn-mobile-drawer');
+    const btnDrawerClose = document.getElementById('btn-drawer-close');
+    const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+
+    function openSidebarDrawer() {
+        document.body.classList.add('drawer-open');
+    }
+
+    function closeSidebarDrawer() {
+        document.body.classList.remove('drawer-open');
+    }
+
+    btnMobileDrawer?.addEventListener('click', openSidebarDrawer);
+    btnDrawerClose?.addEventListener('click', closeSidebarDrawer);
+    sidebarBackdrop?.addEventListener('click', closeSidebarDrawer);
 
     function isMobileViewport() {
         return window.innerWidth <= 820;
@@ -966,7 +982,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (isMobileViewport()) {
             return MOBILE_COLS_MAP[mobileZoomLevel] || 2;
         }
-        return DESKTOP_COLS_MAP[desktopZoomLevel] || 4;
+        return DESKTOP_COLS_MAP[desktopZoomLevel] || 2;
     }
 
     function syncZoomUI() {
@@ -977,11 +993,16 @@ document.addEventListener("DOMContentLoaded", () => {
             zoomSlider.value = String(desktopZoomLevel);
         }
         if (mobZoomLabel) {
-            mobZoomLabel.textContent = `${cols}列`;
+            mobZoomLabel.textContent = cols === 1 ? '精览' : `${cols}列`;
+        }
+        if (btnStreamToggle) {
+            btnStreamToggle.classList.toggle('active', !mobile && cols === 1);
+            btnStreamToggle.textContent = cols === 1 ? '网格' : '精览';
         }
 
         const isDense = mobile ? cols >= 3 : cols >= 5;
         document.body.classList.toggle('zoom-dense', isDense);
+        document.body.classList.toggle('stream-mode', cols === 1);
     }
 
     function applyZoomChange(newLevel, isMobile) {
@@ -989,12 +1010,22 @@ document.addEventListener("DOMContentLoaded", () => {
             mobileZoomLevel = Math.min(4, Math.max(1, newLevel));
             localStorage.setItem(STORAGE_KEYS.ZOOM_MOBILE, String(mobileZoomLevel));
         } else {
-            desktopZoomLevel = Math.min(5, Math.max(1, newLevel));
+            desktopZoomLevel = Math.min(6, Math.max(1, newLevel));
             localStorage.setItem(STORAGE_KEYS.ZOOM_DESKTOP, String(desktopZoomLevel));
         }
         syncZoomUI();
         renderSpace();
     }
+
+    let prevDesktopZoomBeforeStream = 5;
+    btnStreamToggle?.addEventListener('click', () => {
+        if (desktopZoomLevel === 6) {
+            applyZoomChange(prevDesktopZoomBeforeStream || 5, false);
+        } else {
+            prevDesktopZoomBeforeStream = desktopZoomLevel;
+            applyZoomChange(6, false);
+        }
+    });
 
     zoomSlider?.addEventListener('input', (e) => {
         applyZoomChange(parseInt(e.target.value, 10), false);
@@ -1456,14 +1487,17 @@ document.addEventListener("DOMContentLoaded", () => {
         const allBtn = document.createElement('button');
         allBtn.type = 'button';
         allBtn.className = `tab-item ${currentFolder === 'all' ? 'active' : ''}`;
-        allBtn.style.setProperty('--cat-color', '#0f172a');
+        allBtn.style.setProperty('--cat-color', '#e5e5e3');
         allBtn.innerHTML = `
-            <span class="tab-dot"></span>
-            <span>全部</span>
+            <span class="tab-label-wrap">
+                <span class="tab-dot"></span>
+                <span class="tab-label">All series</span>
+            </span>
             <span class="tab-count">${allImages.length}</span>
         `;
         allBtn.addEventListener('click', () => {
             currentFolder = 'all';
+            closeSidebarDrawer();
             renderSpace();
         });
         folderTabsEl.appendChild(allBtn);
@@ -1480,12 +1514,15 @@ document.addEventListener("DOMContentLoaded", () => {
             btn.style.setProperty('--cat-color', color);
             btn.title = `${label}（支持拖拽图片至此归档）`;
             btn.innerHTML = `
-                <span class="tab-dot"></span>
-                <span>${label}</span>
+                <span class="tab-label-wrap">
+                    <span class="tab-dot"></span>
+                    <span class="tab-label">${label}</span>
+                </span>
                 <span class="tab-count">${count}</span>
             `;
             btn.addEventListener('click', () => {
                 currentFolder = folder;
+                closeSidebarDrawer();
                 renderSpace();
             });
             bindTabDropTarget(btn, folder);
@@ -1711,8 +1748,17 @@ document.addEventListener("DOMContentLoaded", () => {
         toast(`已创建「${clean}」`);
     });
 
-    document.getElementById('btn-new-folder')?.addEventListener('click', () => openCategoryModal(true));
-    document.getElementById('mob-btn-cat')?.addEventListener('click', () => openCategoryModal(false));
+    document.getElementById('btn-new-folder')?.addEventListener('click', () => {
+        closeSidebarDrawer();
+        openCategoryModal(true);
+    });
+    document.getElementById('mob-btn-cat')?.addEventListener('click', () => {
+        if (document.body.classList.contains('drawer-open')) {
+            closeSidebarDrawer();
+        } else {
+            openSidebarDrawer();
+        }
+    });
     document.getElementById('category-modal-close')?.addEventListener('click', closeCategoryModal);
     categoryModal?.addEventListener('click', (e) => {
         if (e.target === categoryModal) closeCategoryModal();
@@ -1836,9 +1882,43 @@ document.addEventListener("DOMContentLoaded", () => {
             storageStat.textContent = String(filteredImages.length);
         }
 
+        // 更新顶部画廊上下文标题与元信息 (Editorial Series Header)
+        const seriesTitleEl = document.getElementById('gallery-series-title');
+        const seriesMetaEl = document.getElementById('gallery-series-meta');
+        if (seriesTitleEl) {
+            seriesTitleEl.textContent = currentFolder === 'all'
+                ? 'All Series'
+                : formatFolderDisplayName(currentFolder);
+        }
+        if (seriesMetaEl) {
+            if (searchQuery) {
+                seriesMetaEl.textContent = `Search “${searchQuery}” · ${filteredImages.length} 张`;
+            } else if (currentFolder === 'all') {
+                const catCount = getAllCategoryNames().length;
+                seriesMetaEl.textContent = `${filteredImages.length} 张影像 · ${catCount} 个系列`;
+            } else {
+                const cameras = Array.from(new Set(filteredImages.map(i => i.exif?.camera).filter(Boolean)));
+                const years = Array.from(new Set(filteredImages.map(i => (i.uploaded || '').slice(0, 4)).filter(Boolean)));
+                const yearStr = years.length ? years[0] : '';
+                const camStr = cameras.length ? ` · ${cameras[0]}` : '';
+                seriesMetaEl.textContent = `Series of ${filteredImages.length}${yearStr ? ` · ${yearStr}` : ''}${camStr}`;
+            }
+        }
+
         if (!timelineStreamEl || !emptyStageEl) return;
 
+        timelineStreamEl.classList.toggle('cols-1', numCols === 1);
         resetImageLoadQueue();
+
+        // 同步侧边栏地图角标并在地图视图激活时刷新标记
+        const sidebarMapCount = document.getElementById('sidebar-map-count');
+        if (sidebarMapCount) {
+            const totalGeo = allImages.filter(i => typeof i.exif?.lat === 'number' && typeof i.exif?.lng === 'number').length;
+            sidebarMapCount.textContent = String(totalGeo);
+        }
+        if (typeof activeViewMode !== 'undefined' && activeViewMode === 'map' && typeof renderPhotoMap === 'function') {
+            renderPhotoMap();
+        }
 
         if (filteredImages.length === 0) {
             timelineStreamEl.innerHTML = '';
@@ -1935,8 +2015,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 const aspectStyle = (w > 0 && h > 0) ? `style="aspect-ratio: ${w} / ${h};"` : '';
                 const hasHdrBadge = isItemHdr(item);
+                const ex = item.exif || {};
+                const padIdx = String(globalFilteredIdx + 1).padStart(2, '0');
+                const padTotal = String(filteredImages.length).padStart(2, '0');
+                const exifParts = [ex.focal, ex.aperture, ex.shutter, ex.iso ? `ISO ${ex.iso}` : ''].filter(Boolean);
+                const yearTag = (item.uploaded || '').slice(0, 4);
+                const captionText = numCols === 1
+                    ? (exifParts.length
+                        ? `${padIdx} / ${padTotal} · ${exifParts.join(' · ')}`
+                        : `${padIdx} / ${padTotal} · ${name}${yearTag ? ` · ${yearTag}` : ''}`)
+                    : `${name}${folderName ? ` · ${formatFolderDisplayName(folderName)}` : (yearTag ? ` · ${yearTag}` : '')}`;
 
-                // 纯粹毛玻璃悬浮画布卡片：底栏信息内嵌为悬浮毛玻璃层 (.photo-glass-bar)
+                // 极简画廊卡片：悬浮操作层 + 底部画廊图注 (.photo-caption)
                 card.innerHTML = `
                     <div class="photo-thumb-wrap" ${aspectStyle}>
                         <button type="button" class="thumb-check" title="选择">${isSelected ? '✓' : ''}</button>
@@ -1951,6 +2041,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             <button type="button" class="thumb-copy-btn" title="复制直链">复制</button>
                         </div>
                     </div>
+                    <div class="photo-caption" title="${name}">${captionText}</div>
                 `;
 
                 const thumbWrap = card.querySelector('.photo-thumb-wrap');
@@ -2370,6 +2461,36 @@ document.addEventListener("DOMContentLoaded", () => {
                         return den ? num / den : 0;
                     };
 
+                    const readDms = (start) => {
+                        const d = readRational(start);
+                        const m = readRational(start + 8);
+                        const s = readRational(start + 16);
+                        return d + m / 60 + s / 3600;
+                    };
+
+                    const parseGpsIfd = (gpsOffset) => {
+                        const dirStart = tiffStart + gpsOffset;
+                        if (dirStart + 2 > view.byteLength) return;
+                        const entries = view.getUint16(dirStart, little);
+                        for (let i = 0; i < entries; i++) {
+                            const entry = dirStart + 2 + i * 12;
+                            if (entry + 12 > view.byteLength) break;
+                            const tag = view.getUint16(entry, little);
+                            const type = view.getUint16(entry + 2, little);
+                            const count = view.getUint32(entry + 4, little);
+                            const valOffset = tiffStart + view.getUint32(entry + 8, little);
+                            if (tag === 0x0001 && type === 2) {
+                                tags.gpsLatRef = readString(count <= 4 ? entry + 8 : valOffset, count);
+                            } else if (tag === 0x0002 && type === 5 && count >= 3) {
+                                tags.gpsLat = readDms(valOffset);
+                            } else if (tag === 0x0003 && type === 2) {
+                                tags.gpsLngRef = readString(count <= 4 ? entry + 8 : valOffset, count);
+                            } else if (tag === 0x0004 && type === 5 && count >= 3) {
+                                tags.gpsLng = readDms(valOffset);
+                            }
+                        }
+                    };
+
                     const parseIfd = (ifdOffset) => {
                         const dirStart = tiffStart + ifdOffset;
                         if (dirStart + 2 > view.byteLength) return;
@@ -2384,6 +2505,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
                             if (tag === 0x8769) {
                                 parseIfd(view.getUint32(entry + 8, little));
+                            } else if (tag === 0x8825) {
+                                parseGpsIfd(view.getUint32(entry + 8, little));
                             } else if ((tag === 0x010F || tag === 0x0110 || tag === 0xA434) && type === 2) {
                                 const strPos = count <= 4 ? entry + 8 : valOffset;
                                 tags[tag] = readString(strPos, count);
@@ -2403,6 +2526,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     const exp = tags[0x829A];
                     const shutter = exp ? (exp < 1 ? `1/${Math.round(1 / exp)}s` : `${exp}s`) : '';
 
+                    let lat;
+                    let lng;
+                    if (typeof tags.gpsLat === 'number' && typeof tags.gpsLng === 'number' && (tags.gpsLat !== 0 || tags.gpsLng !== 0)) {
+                        lat = Number((tags.gpsLatRef === 'S' ? -tags.gpsLat : tags.gpsLat).toFixed(6));
+                        lng = Number((tags.gpsLngRef === 'W' ? -tags.gpsLng : tags.gpsLng).toFixed(6));
+                    }
+
                     return {
                         ...baseExif,
                         camera,
@@ -2410,7 +2540,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         focal: tags[0x920A] ? `${Math.round(tags[0x920A])}mm` : '',
                         aperture: tags[0x829D] ? `f/${Number(tags[0x829D]).toFixed(1).replace(/\.0$/, '')}` : '',
                         shutter,
-                        iso: tags[0x8827] ? String(tags[0x8827]) : ''
+                        iso: tags[0x8827] ? String(tags[0x8827]) : '',
+                        ...(lat !== undefined && lng !== undefined ? { lat, lng } : {})
                     };
                 } else if ((marker & 0xFF00) !== 0xFF00) {
                     break;
@@ -2712,6 +2843,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (metaTitleInput) metaTitleInput.value = item.title || item.originalName || '';
         if (metaFolderInput) metaFolderInput.value = folderName;
         if (viewerFolderDot) viewerFolderDot.style.background = getCategoryColor(folderName);
+        const metaLocationInput = document.getElementById('meta-location-input');
+        if (metaLocationInput) {
+            const hasCoords = typeof item.exif?.lat === 'number' && typeof item.exif?.lng === 'number';
+            metaLocationInput.value = hasCoords ? `${item.exif.lat}, ${item.exif.lng}` : '';
+        }
         renderViewerCategoryChips(item);
 
         document.getElementById('stat-dimensions').textContent = (item.width && item.height) ? `${item.width} × ${item.height}` : '原始比例';
@@ -2982,9 +3118,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
     window.addEventListener('keydown', (e) => {
         if (!isUnlocked) return;
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-        if (e.key === 'Escape') {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+            e.preventDefault();
+            searchInput?.focus();
+            searchInput?.select();
+            return;
+        }
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
+            if (e.key === 'Escape') e.target.blur();
+            return;
+        }
+        if (e.key === '/') {
+            e.preventDefault();
+            searchInput?.focus();
+        } else if (e.key === 'Escape') {
             if (activeViewerIdx >= 0) closeViewer();
+            else if (document.body.classList.contains('drawer-open')) closeSidebarDrawer();
             else if (categoryModal?.classList.contains('open')) closeCategoryModal();
             else if (settingsModal?.classList.contains('open')) closeSettings();
             else if (quickCatPopover && !quickCatPopover.hidden) closeQuickCatPopover();
@@ -2995,6 +3144,371 @@ document.addEventListener("DOMContentLoaded", () => {
         } else if (e.key === 'b' || e.key === 'B') {
             handleToggleBatchMode();
         }
+    });
+
+    /* =========================================================
+       10. 摄影足迹地图模块 (Photo Map View · Leaflet + Spatial Clustering)
+    ========================================================= */
+    let activeViewMode = 'gallery'; // 'gallery' | 'map'
+    let mapLayerMode = 'map'; // 'map' | 'sat'
+    let leafletMap = null;
+    let leafletTileLayer = null;
+    let leafletMarkersLayer = null;
+    let leafletLoadPromise = null;
+    let lastClusterCoords = null;
+
+    const mapStageEl = document.getElementById('map-stage');
+    const btnViewGallery = document.getElementById('btn-view-gallery');
+    const btnViewMap = document.getElementById('btn-view-map');
+    const mobBtnMap = document.getElementById('mob-btn-map');
+    const mapStatsPill = document.getElementById('map-stats-pill');
+    const btnMapFit = document.getElementById('btn-map-fit');
+    const btnMapLayerMap = document.getElementById('btn-map-layer-map');
+    const btnMapLayerSat = document.getElementById('btn-map-layer-sat');
+    const btnMapZoomIn = document.getElementById('btn-map-zoom-in');
+    const btnMapZoomOut = document.getElementById('btn-map-zoom-out');
+    const mapClusterSheet = document.getElementById('map-cluster-sheet');
+    const mapClusterTitle = document.getElementById('map-cluster-title');
+    const mapClusterGrid = document.getElementById('map-cluster-grid');
+    const btnMapClusterZoom = document.getElementById('btn-map-cluster-zoom');
+    const btnMapClusterClose = document.getElementById('btn-map-cluster-close');
+
+    function ensureLeafletLoaded() {
+        if (window.L) return Promise.resolve(window.L);
+        if (leafletLoadPromise) return leafletLoadPromise;
+
+        const cdnBases = [
+            'https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4',
+            'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist',
+            'https://unpkg.com/leaflet@1.9.4/dist',
+            'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4'
+        ];
+
+        const loadFromIdx = (idx) => new Promise((resolve, reject) => {
+            if (idx >= cdnBases.length) {
+                reject(new Error('All Leaflet CDNs failed'));
+                return;
+            }
+            const base = cdnBases[idx];
+            const cssReady = new Promise((resCss) => {
+                const css = document.createElement('link');
+                css.rel = 'stylesheet';
+                css.href = `${base}/leaflet.css`;
+                css.onload = resCss;
+                css.onerror = resCss;
+                setTimeout(resCss, 1500);
+                document.head.appendChild(css);
+            });
+
+            const script = document.createElement('script');
+            script.src = `${base}/leaflet.js`;
+            script.onload = async () => {
+                await cssReady;
+                if (window.L) resolve(window.L);
+                else loadFromIdx(idx + 1).then(resolve, reject);
+            };
+            script.onerror = () => loadFromIdx(idx + 1).then(resolve, reject);
+            document.head.appendChild(script);
+        });
+
+        leafletLoadPromise = loadFromIdx(0);
+        return leafletLoadPromise;
+    }
+
+    function getMapTileConfig() {
+        // 免费且无需申请 API Key 的公开地图瓦片服务（Esri 极简画廊灰/暗黑底图 + 卫星影像）
+        if (mapLayerMode === 'sat') {
+            return {
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                maxZoom: 18,
+                attribution: 'Esri Satellite'
+            };
+        }
+        if (isDarkMode) {
+            return {
+                url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+                maxZoom: 16,
+                attribution: 'Esri Dark Gray'
+            };
+        }
+        return {
+            url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+            maxZoom: 16,
+            attribution: 'Esri Light Gray'
+        };
+    }
+
+    let mapFallbackStep = 0;
+
+    function updateMapBasemap() {
+        if (!leafletMap || !window.L) return;
+        const cfg = getMapTileConfig();
+        if (leafletTileLayer) {
+            leafletMap.removeLayer(leafletTileLayer);
+        }
+        mapFallbackStep = 0;
+        leafletTileLayer = window.L.tileLayer(cfg.url, {
+            subdomains: cfg.subdomains || 'abc',
+            maxZoom: cfg.maxZoom || 18,
+            attribution: cfg.attribution
+        }).addTo(leafletMap);
+
+        leafletTileLayer.on('tileerror', () => {
+            if (!leafletMap || !window.L || mapFallbackStep >= 2) return;
+            mapFallbackStep++;
+            leafletMap.removeLayer(leafletTileLayer);
+            if (mapFallbackStep === 1) {
+                const autoNaviUrl = mapLayerMode === 'sat'
+                    ? 'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}'
+                    : 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}';
+                leafletTileLayer = window.L.tileLayer(autoNaviUrl, {
+                    subdomains: ['1', '2', '3', '4'],
+                    maxZoom: 18
+                }).addTo(leafletMap);
+            } else {
+                leafletTileLayer = window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 18
+                }).addTo(leafletMap);
+            }
+        });
+    }
+
+    function getGeoItems() {
+        return filteredImages.filter(item => (
+            typeof item.exif?.lat === 'number' &&
+            typeof item.exif?.lng === 'number' &&
+            Number.isFinite(item.exif.lat) &&
+            Number.isFinite(item.exif.lng)
+        ));
+    }
+
+    function closeMapClusterSheet() {
+        if (mapClusterSheet) mapClusterSheet.hidden = true;
+        lastClusterCoords = null;
+    }
+
+    function openMapClusterSheet(cluster) {
+        if (!mapClusterSheet || !mapClusterGrid || !mapClusterTitle) return;
+        lastClusterCoords = { lat: cluster.lat, lng: cluster.lng };
+        mapClusterTitle.textContent = `${cluster.items.length} 张影像`;
+        mapClusterGrid.innerHTML = '';
+
+        cluster.items.forEach(({ item, filteredIdx }) => {
+            const thumb = document.createElement('button');
+            thumb.type = 'button';
+            thumb.className = 'map-cluster-thumb';
+            thumb.title = item.title || item.originalName || '';
+            const src = getFastThumbUrl(item);
+            thumb.innerHTML = `<img src="${src}" alt="" loading="lazy">`;
+            thumb.addEventListener('click', () => {
+                openViewer(filteredIdx, src);
+            });
+            mapClusterGrid.appendChild(thumb);
+        });
+
+        mapClusterSheet.hidden = false;
+    }
+
+    function renderPhotoMap(fitBounds = false) {
+        const geoItems = getGeoItems();
+        if (mapStatsPill) {
+            mapStatsPill.textContent = `已定位 ${geoItems.length} / ${filteredImages.length}`;
+        }
+        if (!leafletMap || !window.L || !leafletMarkersLayer) return;
+
+        leafletMarkersLayer.clearLayers();
+        if (geoItems.length === 0) return;
+
+        if (fitBounds) {
+            const bounds = window.L.latLngBounds(geoItems.map(i => [i.exif.lat, i.exif.lng]));
+            leafletMap.fitBounds(bounds, { padding: [56, 56], maxZoom: 14 });
+        }
+
+        // 基于当前缩放级别的网格空间聚合
+        const zoom = leafletMap.getZoom();
+        const cellSize = Math.max(44, 72 - zoom * 1.5);
+        const buckets = new Map();
+
+        geoItems.forEach((item) => {
+            const filteredIdx = filteredImages.indexOf(item);
+            const pt = leafletMap.latLngToContainerPoint([item.exif.lat, item.exif.lng]);
+            const gx = Math.floor(pt.x / cellSize);
+            const gy = Math.floor(pt.y / cellSize);
+            const key = `${gx}:${gy}`;
+            if (!buckets.has(key)) {
+                buckets.set(key, {
+                    latSum: 0,
+                    lngSum: 0,
+                    items: []
+                });
+            }
+            const b = buckets.get(key);
+            b.latSum += item.exif.lat;
+            b.lngSum += item.exif.lng;
+            b.items.push({ item, filteredIdx });
+        });
+
+        buckets.forEach((b) => {
+            const count = b.items.length;
+            const lat = b.latSum / count;
+            const lng = b.lngSum / count;
+            const coverItem = b.items[0].item;
+            const coverSrc = getFastThumbUrl(coverItem, false);
+            const fallbackSrc = getFastThumbUrl(coverItem, true);
+            const lqipStyle = coverItem.lqip ? `style="background-image:url('${coverItem.lqip}')"` : '';
+
+            const html = `
+                <div class="map-marker-bubble">
+                    <div class="map-marker-img-wrap" ${lqipStyle}>
+                        <img src="${coverSrc}" alt="" onerror="if(!this.dataset.retried){this.dataset.retried='1';this.src='${fallbackSrc}';}else{this.style.opacity='0';}">
+                    </div>
+                    ${count > 1 ? `<span class="map-marker-count">${count}</span>` : ''}
+                </div>
+            `;
+            const icon = window.L.divIcon({
+                className: 'map-photo-marker',
+                html,
+                iconSize: [44, 44],
+                iconAnchor: [22, 22]
+            });
+
+            const marker = window.L.marker([lat, lng], { icon });
+            marker.on('click', () => {
+                if (count === 1) {
+                    closeMapClusterSheet();
+                    openViewer(b.items[0].filteredIdx, coverSrc);
+                } else {
+                    openMapClusterSheet({ lat, lng, items: b.items });
+                }
+            });
+            leafletMarkersLayer.addLayer(marker);
+        });
+    }
+
+    async function initPhotoMap() {
+        if (mapStatsPill) mapStatsPill.textContent = '地图加载中…';
+        try {
+            const L = await ensureLeafletLoaded();
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+            if (!leafletMap) {
+                leafletMap = L.map('photo-map-canvas', {
+                    zoomControl: false,
+                    attributionControl: false,
+                    center: [35.6762, 139.6503],
+                    zoom: 4
+                });
+                leafletMarkersLayer = L.layerGroup().addTo(leafletMap);
+                updateMapBasemap();
+                leafletMap.on('zoomend', () => {
+                    if (activeViewMode === 'map') renderPhotoMap(false);
+                });
+                leafletMap.on('click', closeMapClusterSheet);
+            }
+            setTimeout(() => {
+                leafletMap.invalidateSize();
+                renderPhotoMap(true);
+            }, 80);
+            setTimeout(() => {
+                leafletMap.invalidateSize();
+            }, 380);
+        } catch {
+            if (mapStatsPill) mapStatsPill.textContent = '地图组件加载失败';
+            toast('地图引擎加载失败，请检查网络连接');
+        }
+    }
+
+    function setActiveViewMode(mode) {
+        activeViewMode = mode === 'map' ? 'map' : 'gallery';
+        const isMap = activeViewMode === 'map';
+
+        if (spaceMainEl) spaceMainEl.hidden = isMap;
+        if (mapStageEl) mapStageEl.hidden = !isMap;
+
+        btnViewGallery?.classList.toggle('active', !isMap);
+        btnViewMap?.classList.toggle('active', isMap);
+        mobBtnMap?.classList.toggle('active', isMap);
+
+        closeSidebarDrawer();
+
+        if (isMap) {
+            initPhotoMap();
+        } else {
+            closeMapClusterSheet();
+        }
+    }
+
+    btnViewGallery?.addEventListener('click', () => setActiveViewMode('gallery'));
+    btnViewMap?.addEventListener('click', () => setActiveViewMode('map'));
+    mobBtnMap?.addEventListener('click', () => {
+        setActiveViewMode(activeViewMode === 'map' ? 'gallery' : 'map');
+    });
+
+    btnMapLayerMap?.addEventListener('click', () => {
+        mapLayerMode = 'map';
+        btnMapLayerMap.classList.add('active');
+        btnMapLayerSat?.classList.remove('active');
+        updateMapBasemap();
+    });
+
+    btnMapLayerSat?.addEventListener('click', () => {
+        mapLayerMode = 'sat';
+        btnMapLayerSat.classList.add('active');
+        btnMapLayerMap?.classList.remove('active');
+        updateMapBasemap();
+    });
+
+    btnMapZoomIn?.addEventListener('click', () => leafletMap?.zoomIn());
+    btnMapZoomOut?.addEventListener('click', () => leafletMap?.zoomOut());
+    btnMapFit?.addEventListener('click', () => renderPhotoMap(true));
+    btnMapClusterClose?.addEventListener('click', closeMapClusterSheet);
+    btnMapClusterZoom?.addEventListener('click', () => {
+        if (leafletMap && lastClusterCoords) {
+            leafletMap.setView([lastClusterCoords.lat, lastClusterCoords.lng], Math.min(17, leafletMap.getZoom() + 3));
+            closeMapClusterSheet();
+        }
+    });
+
+    // 在大图检视侧边栏保存/更新地理坐标
+    document.getElementById('btn-save-location')?.addEventListener('click', async () => {
+        const item = filteredImages[activeViewerIdx];
+        const input = document.getElementById('meta-location-input');
+        if (!item || !input) return;
+
+        const raw = input.value.trim();
+        let exifPatch = {};
+        if (!raw) {
+            exifPatch = { lat: null, lng: null };
+        } else {
+            const parts = raw.split(/[\s,，]+/).map(Number);
+            if (parts.length < 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1]) ||
+                Math.abs(parts[0]) > 90 || Math.abs(parts[1]) > 180) {
+                toast('请输入有效坐标，如: 37.7544, -122.4477');
+                return;
+            }
+            exifPatch = { lat: Number(parts[0].toFixed(6)), lng: Number(parts[1].toFixed(6)) };
+        }
+
+        item.exif = { ...(item.exif || {}), ...exifPatch };
+        if (exifPatch.lat === null) {
+            delete item.exif.lat;
+            delete item.exif.lng;
+        }
+        saveCloudSnapshot(allImages);
+
+        if (isR2Connected) {
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+                await fetch('/api/images', {
+                    method: 'PATCH',
+                    headers,
+                    body: JSON.stringify({ key: item.key, exif: exifPatch })
+                });
+            } catch {}
+        }
+
+        if (activeViewMode === 'map') renderPhotoMap(false);
+        toast(exifPatch.lat !== null ? '坐标已保存' : '坐标已清除');
     });
 
     syncZoomUI();

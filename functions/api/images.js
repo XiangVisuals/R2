@@ -646,7 +646,7 @@ export async function onRequestPatch(context) {
     }
 
     const keys = Array.isArray(body.keys) ? body.keys : (body.key ? [body.key] : []);
-    const { title, folder } = body;
+    const { title, folder, exif: exifPatch } = body;
 
     if (keys.length === 0) {
       await purgeEdgeListCache(request, context);
@@ -666,6 +666,31 @@ export async function onRequestPatch(context) {
       if (typeof folder === "string") {
         const cleanF = folder.trim();
         updatedMeta.folder = (cleanF === "default" || cleanF === "all") ? "" : cleanF;
+      }
+      if (exifPatch && typeof exifPatch === "object") {
+        let prevExif = {};
+        try {
+          prevExif = updatedMeta.exif ? JSON.parse(updatedMeta.exif) : {};
+        } catch {
+          prevExif = {};
+        }
+        const mergedExif = { ...prevExif };
+        if (typeof exifPatch.lat === "number" && Number.isFinite(exifPatch.lat)) {
+          mergedExif.lat = exifPatch.lat;
+        } else if (exifPatch.lat === null) {
+          delete mergedExif.lat;
+        }
+        if (typeof exifPatch.lng === "number" && Number.isFinite(exifPatch.lng)) {
+          mergedExif.lng = exifPatch.lng;
+        } else if (exifPatch.lng === null) {
+          delete mergedExif.lng;
+        }
+        if (typeof exifPatch.location === "string") {
+          const loc = exifPatch.location.trim().slice(0, 80);
+          if (loc) mergedExif.location = loc;
+          else delete mergedExif.location;
+        }
+        updatedMeta.exif = JSON.stringify(mergedExif);
       }
 
       await bucket.put(k, existing.body, {
