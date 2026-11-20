@@ -6,7 +6,7 @@
  */
 
 const IMG_CACHE_NAME = 'xiang-r2-images-v4';
-const STATIC_CACHE_NAME = 'xiang-r2-static-v7';
+const STATIC_CACHE_NAME = 'xiang-r2-static-v8';
 
 self.addEventListener('install', () => {
     self.skipWaiting();

@@ -2310,9 +2310,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const ribbonText = document.getElementById('ribbon-text');
     const ribbonPercent = document.getElementById('ribbon-percent');
 
-    document.getElementById('btn-upload')?.addEventListener('click', () => fileInput?.click());
-    document.getElementById('mob-btn-upload')?.addEventListener('click', () => fileInput?.click());
-    document.getElementById('empty-drop-trigger')?.addEventListener('click', () => fileInput?.click());
+    document.getElementById('btn-upload')?.addEventListener('click', () => {
+        if (fileInput) { fileInput.value = ''; fileInput.click(); }
+    });
+    document.getElementById('mob-btn-upload')?.addEventListener('click', () => {
+        if (fileInput) { fileInput.value = ''; fileInput.click(); }
+    });
+    document.getElementById('empty-drop-trigger')?.addEventListener('click', () => {
+        if (fileInput) { fileInput.value = ''; fileInput.click(); }
+    });
 
     fileInput?.addEventListener('change', (e) => {
         if (e.target.files?.length) {
@@ -2622,7 +2628,41 @@ document.addEventListener("DOMContentLoaded", () => {
         return { file: out, thumbBlob, lqip, width, height };
     }
 
+    function uploadFormDataWithProgress(fd, headers, onProgress) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/images', true);
+            Object.entries(headers || {}).forEach(([k, v]) => {
+                if (v) xhr.setRequestHeader(k, v);
+            });
+            xhr.upload.onprogress = (ev) => {
+                if (ev.lengthComputable && typeof onProgress === 'function') {
+                    onProgress(ev.loaded / ev.total);
+                }
+            };
+            xhr.onload = () => {
+                let data = null;
+                try {
+                    data = JSON.parse(xhr.responseText || '{}');
+                } catch {
+                    data = null;
+                }
+                if (xhr.status >= 200 && xhr.status < 300 && data && data.ok) {
+                    resolve(data);
+                } else {
+                    const msg = data?.error || (xhr.status === 413 ? '文件体积超出服务器限制' : xhr.status === 401 ? '登录状态已失效，请重新解锁' : `上传失败 (HTTP ${xhr.status})`);
+                    reject(new Error(msg));
+                }
+            };
+            xhr.onerror = () => reject(new Error('网络连接中断，上传失败'));
+            xhr.ontimeout = () => reject(new Error('上传超时，请重试'));
+            xhr.timeout = 120000;
+            xhr.send(fd);
+        });
+    }
+
     async function uploadFiles(files, explicitFolder = null) {
+        if (!files || files.length === 0) return;
         const targetFolder = normalizeFolder(explicitFolder !== null ? explicitFolder : (currentFolder === 'all' ? '' : currentFolder));
         const targetLabel = targetFolder ? formatFolderDisplayName(targetFolder) : '';
         if (uploadRibbon) uploadRibbon.hidden = false;
@@ -2631,10 +2671,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const total = files.length;
 
         for (const rawFile of files) {
-            if (ribbonText) ribbonText.textContent = `正在上传 ${rawFile.name} (${completed + 1}/${total})...`;
-            const pct = Math.round(((completed + 0.25) / total) * 100);
-            if (ribbonBar) ribbonBar.style.width = `${pct}%`;
-            if (ribbonPercent) ribbonPercent.textContent = `${pct}%`;
+            if (ribbonText) ribbonText.textContent = `正在处理 ${rawFile.name} (${completed + 1}/${total})...`;
+            const basePct = Math.round(((completed + 0.1) / total) * 100);
+            if (ribbonBar) ribbonBar.style.width = `${basePct}%`;
+            if (ribbonPercent) ribbonPercent.textContent = `${basePct}%`;
 
             try {
                 const exif = await parseExif(rawFile);
@@ -2662,11 +2702,12 @@ document.addEventListener("DOMContentLoaded", () => {
                     const headers = {};
                     if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
 
-                    const res = await fetch('/api/images', { method: 'POST', headers, body: fd });
-                    const data = await res.json();
-                    if (!res.ok || !data.ok) {
-                        throw new Error(data.error || '上传失败');
-                    }
+                    if (ribbonText) ribbonText.textContent = `正在上传 ${rawFile.name} (${completed + 1}/${total})...`;
+                    const data = await uploadFormDataWithProgress(fd, headers, (ratio) => {
+                        const livePct = Math.min(99, Math.round(((completed + 0.15 + ratio * 0.85) / total) * 100));
+                        if (ribbonBar) ribbonBar.style.width = `${livePct}%`;
+                        if (ribbonPercent) ribbonPercent.textContent = `${livePct}%`;
+                    });
                     newItem = data.item;
                 } else {
                     const dataUrl = await new Promise(r => {
@@ -3311,6 +3352,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderPhotoMap(fitBounds = false) {
         const geoItems = getGeoItems();
+        const mapEmptyHint = document.getElementById('map-empty-hint');
+        if (mapEmptyHint) {
+            mapEmptyHint.hidden = geoItems.length > 0;
+        }
         if (mapStatsPill) {
             mapStatsPill.textContent = `已定位 ${geoItems.length} / ${filteredImages.length}`;
         }

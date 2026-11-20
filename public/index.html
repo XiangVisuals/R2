@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="dark light">
     <title>IMG · SPACE</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='5' fill='%23111113'/%3E%3Cpath d='M6 23l6.5-7.5 4.5 5 4-4.5 5 7H6z' fill='%23f4f4f2' opacity='0.94'/%3E%3Ccircle cx='11' cy='11' r='2.2' fill='%23f4f4f2'/%3E%3C/svg%3E" type="image/svg+xml">
-    <link rel="stylesheet" href="/css/style.css?v=7">
+    <link rel="stylesheet" href="/css/style.css?v=8">
 </head>
 <body class="locked dark-mode hdr-enabled">
 
@@ -101,7 +101,7 @@
     </div>
 
     <!-- 全局文件选择器 (完整支持主流 HDR 格式：Ultra HDR JPEG, Apple HEIC/HEIF, 10-bit AVIF, JXL, 16-bit PNG/TIFF, DNG/RAW) -->
-    <input type="file" id="file-input" multiple accept="image/*,.heic,.heif,.hif,.avif,.jxl,.tif,.tiff,.dng,.cr2,.cr3,.arw,.nef,.raf,.orf,.rw2,.hdr,.exr" hidden>
+    <input type="file" id="file-input" class="sr-only-file-input" multiple accept="image/*,.heic,.heif,.hif,.avif,.jxl,.tif,.tiff,.dng,.cr2,.cr3,.arw,.nef,.raf,.orf,.rw2,.hdr,.exr">
 
     <!-- 拖拽上传毛玻璃遮罩 -->
     <div id="drop-overlay" class="drop-overlay" aria-hidden="true">
@@ -293,6 +293,11 @@
                 <div class="map-zoom-controls">
                     <button type="button" class="map-zoom-btn" id="btn-map-zoom-in" aria-label="放大地图">+</button>
                     <button type="button" class="map-zoom-btn" id="btn-map-zoom-out" aria-label="缩小地图">−</button>
+                </div>
+
+                <div class="map-empty-hint" id="map-empty-hint" hidden>
+                    <span>当前系列暂无带地理坐标的影像</span>
+                    <small>上传带 GPS 的照片，或在看图侧边栏输入「经度,纬度」即可点亮地图足迹</small>
                 </div>
 
                 <!-- 点击聚合标记弹出的照片预览条 -->
@@ -537,6 +542,6 @@
 
     <div id="toast-box" class="toast-box"></div>
 
-    <script src="/js/app.js?v=7"></script>
+    <script src="/js/app.js?v=8"></script>
 </body>
 </html>
